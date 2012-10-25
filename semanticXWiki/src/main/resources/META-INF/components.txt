@@ -1,0 +1,7 @@
+com.objectsecurity.xwiki.SemanticPropertyMacro
+com.objectsecurity.xwiki.VisualSemanticPropertyMacro
+com.objectsecurity.xwiki.SemanticPropertyTableMacro
+com.objectsecurity.xwiki.SemanticQueryMacro
+com.objectsecurity.xwiki.RemovePropertyMacro
+com.objectsecurity.xwiki.GetSemanticPropertyMacro
+com.objectsecurity.xwiki.SemanticPropertyFromContextMacro
