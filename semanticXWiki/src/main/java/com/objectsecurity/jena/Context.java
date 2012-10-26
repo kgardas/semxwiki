@@ -20,6 +20,9 @@
  * The research leading to these results has received funding
  * from the European Union Seventh Framework Programme (FP7/2007-2013)
  * under grant agreement No FP7-242474.
+ * 
+ * Partially funded by the European Space Agengy as part of contract
+ * 4000101353 / 10 / NL / SFe
  *
  * Written by Karel Gardas, <kgardas@objectsecurity.com>
  */

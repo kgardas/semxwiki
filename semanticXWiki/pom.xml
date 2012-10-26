@@ -40,6 +40,9 @@
                                 <version>1.10.b1</version>
 				<configuration>
 					<header>${basedir}/src/etc/license-header.txt</header>
+					<validHeaders>
+					<validHeader>${basedir}/src/etc/license-header-esa-included.txt</validHeader>
+					</validHeaders>
 					<quiet>false</quiet>
 					<failIfMissing>true</failIfMissing>
 					<strictCheck>true</strictCheck>
@@ -48,6 +51,7 @@
 					</includes>
 					<excludes>
 						<exclude>**/components.txt</exclude>
+						<exclude>src/etc/*.txt</exclude>
 					</excludes>
 				</configuration>
 			</plugin>
