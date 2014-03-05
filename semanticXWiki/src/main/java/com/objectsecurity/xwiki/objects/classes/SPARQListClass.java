@@ -28,13 +28,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.Vector;
-import java.lang.reflect.Method;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.ecs.xhtml.input;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.objectsecurity.jena.Context;
 import com.xpn.xwiki.XWiki;
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.objects.BaseCollection;
@@ -43,7 +43,6 @@ import com.xpn.xwiki.objects.ListProperty;
 import com.xpn.xwiki.objects.classes.ListClass;
 import com.xpn.xwiki.objects.classes.ListItem;
 import com.xpn.xwiki.objects.meta.PropertyMetaClass;
-//import com.xpn.xwiki.plugin.query.QueryPlugin;
 
 public class SPARQListClass extends ListClass
 {
@@ -67,24 +66,24 @@ public class SPARQListClass extends ListClass
     public SPARQListClass(String name, String prettyname, PropertyMetaClass wclass)
     {
         super(name, prettyname, wclass);
-        System.err.println("SPARQListClass::CTOR 1");
+        LOG.debug("SPARQListClass::CTOR 3");
     }
 
     public SPARQListClass(PropertyMetaClass wclass)
     {
         super("sparqlist", "SPARQ List", wclass);
-        System.err.println("SPARQListClass::CTOR 1");
+        LOG.debug("SPARQListClass::CTOR 2");
     }
 
     public SPARQListClass()
     {
         this(null);
-        System.err.println("SPARQListClass::CTOR 1");
+        LOG.debug("SPARQListClass::CTOR 1");
     }
 
     public List<ListItem> makeList(List<Object> list)
     {
-        System.err.println("SPARQListClass::makeList: " + list);
+        LOG.debug("SPARQListClass::makeList: " + list);
         List<ListItem> result = new ArrayList<ListItem>();
         for (Object item : list) {
             // Oracle databases treat NULL and empty strings similarly. Thus the list passed
@@ -111,12 +110,12 @@ public class SPARQListClass extends ListClass
 
     public List<ListItem> getSPARQList(XWikiContext context)
     {
-        System.err.println("SPARQListClass::getSPARQList: " + context);
+        LOG.info("SPARQListClass::getSPARQList: " + context);
         List<ListItem> list = getCachedSPARQList(context);
         String insertedValue = getInsertValue();
         String insertAtPosition = getInsertAtPosition();
-        System.out.println("insertedValue: `" + insertedValue + "'");
-        System.out.println("insertAtPosition: `" + insertAtPosition + "'");
+        LOG.debug("insertedValue: `" + insertedValue + "'");
+        LOG.debug("insertAtPosition: `" + insertAtPosition + "'");
         if (list == null) {
             XWiki xwiki = context.getWiki();
             String query = getQuery(context);
@@ -125,19 +124,13 @@ public class SPARQListClass extends ListClass
                 list = new ArrayList<ListItem>();
             } else {
                 try {
-                    // we use reflection to get into O/S Jena's Context class
-                    Class c = Class.forName("com.objectsecurity.jena.Context");
-                    Method m = c.getMethod("getInstance", null);
-                    Object ctx = m.invoke(null, null);
-                    m = c.getMethod("query", new Class[] {String.class, String[].class});
-                    Object r = m.invoke(ctx, query, new String[0]);
-                    System.out.println("result of query: " + r.toString());
-                    System.out.println("result of query: " + r.getClass().toString());
-                    Vector vec = (Vector)r;
+                	Vector<Vector<String>> vec = Context.getInstance().query(query, new String[0]);
+                    LOG.debug("result of query: " + vec);
+                    LOG.debug("result of query: " + ((vec==null)?"<null>":vec.getClass().toString()));
                     list = new ArrayList<ListItem>();
                     for (int i = 0; i < vec.size(); i++) {
-                        String name = (String)((Vector)vec.elementAt(i)).elementAt(0);
-                        System.out.println("add name: " + name);
+                        String name = vec.elementAt(i).elementAt(0);
+                        LOG.debug("add name: " + name);
                         list.add(new ListItem(name));
                     }
                     // if ((xwiki.getHibernateStore() != null) && (!query.startsWith("/"))) {
@@ -146,7 +139,7 @@ public class SPARQListClass extends ListClass
                     //     list = makeList(((QueryPlugin) xwiki.getPlugin("query", context)).xpath(query).list());
                     // }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                	LOG.warn("exception while executing query", e);
                     list = new ArrayList<ListItem>();
                 }
             }
@@ -164,18 +157,19 @@ public class SPARQListClass extends ListClass
             }
             setCachedSPARQList(list, context);
         }
-        System.out.print("list: [");
+        
+        StringBuilder logResult = new StringBuilder("list: [");
         for (int i = 0; i < list.size(); i++) {
-            System.out.print("'" + list.get(i).toString() + "',");
+        	logResult.append("'").append(list.get(i)).append("',");
         }
-        System.out.println("]");
+        LOG.debug(logResult.append("]").toString());
         return list;
     }
 
     @Override
     public List<String> getList(XWikiContext context)
     {
-        System.err.println("SPARQListClass::getList: " + context);
+        LOG.info("SPARQListClass::getList: " + context);
         List<ListItem> dblist = getSPARQList(context);
 
         String sort = getSort();
@@ -196,7 +190,7 @@ public class SPARQListClass extends ListClass
     @Override
     public Map<String, ListItem> getMap(XWikiContext context)
     {
-        System.err.println("SPARQListClass::getMap: " + context);
+        LOG.info("SPARQListClass::getMap: " + context);
         List<ListItem> list = getSPARQList(context);
         Map<String, ListItem> result = new HashMap<String, ListItem>();
         if ((list == null) || (list.size() == 0)) {
@@ -239,10 +233,10 @@ public class SPARQListClass extends ListClass
      */
     public String getQuery(XWikiContext context)
     {
-        System.err.println("SPARQListClass::getQuery: " + context);
+        LOG.info("SPARQListClass::getQuery: " + context);
         // First, get the hql query entered by the user.
         String sparq = getSparq();
-        System.out.println("SPARQ Query: `" + sparq + "'");
+        LOG.debug("SPARQ Query: `" + sparq + "'");
         // Parse the query, so that it can contain velocity scripts, for example to use the
         // current document name, or the current username.
         // try {
@@ -255,49 +249,49 @@ public class SPARQListClass extends ListClass
 
     public String getSparq()
     {
-        System.err.println("SPARQListClass::getSparq()");
+        LOG.debug("SPARQListClass::getSparq()");
         return getLargeStringValue("sparq");
     }
 
     public void setSparq(String sparq)
     {
-        System.err.println("SPARQListClass::setSparq: " + sparq);
+        LOG.debug("SPARQListClass::setSparq: " + sparq);
         setLargeStringValue("sparq", sparq);
     }
 
     public String getClassname()
     {
-        System.err.println("SPARQListClass::getClassname");
+        LOG.debug("SPARQListClass::getClassname");
         return getStringValue("classname");
     }
 
     public void setClassname(String classname)
     {
-        System.err.println("SPARQListClass::setClassname: " + classname);
+        LOG.debug("SPARQListClass::setClassname: " + classname);
         setStringValue("classname", classname);
     }
 
     public String getIdField()
     {
-        System.err.println("SPARQListClass::getIdField()");
+        LOG.debug("SPARQListClass::getIdField()");
         return getStringValue("idField");
     }
 
     public void setIdField(String idField)
     {
-        System.err.println("SPARQListClass::setIdField: " + idField);
+        LOG.debug("SPARQListClass::setIdField: " + idField);
         setStringValue("idField", idField);
     }
 
     public String getValueField()
     {
-        System.err.println("SPARQListClass::getValueField");
+        LOG.debug("SPARQListClass::getValueField");
         return getStringValue("valueField");
     }
 
     public void setValueField(String valueField)
     {
-        System.err.println("SPARQListClass::setValueField: " + valueField);
+        LOG.debug("SPARQListClass::setValueField: " + valueField);
         setStringValue("valueField", valueField);
     }
 
@@ -323,7 +317,7 @@ public class SPARQListClass extends ListClass
 
     public List<ListItem> getCachedSPARQList(XWikiContext context)
     {
-        System.err.println("SPARQListClass::getCachedSPARQList");
+        LOG.info("SPARQListClass::getCachedSPARQList");
         if (isCache()) {
             return this.cachedSPARQList;
         } else {
@@ -333,7 +327,7 @@ public class SPARQListClass extends ListClass
 
     public void setCachedSPARQList(List<ListItem> cachedSPARQList, XWikiContext context)
     {
-        System.err.println("SPARQListClass::setCachedSPARQList");
+        LOG.info("SPARQListClass::setCachedSPARQList");
         if (isCache()) {
             this.cachedSPARQList = cachedSPARQList;
         } else {
@@ -344,14 +338,14 @@ public class SPARQListClass extends ListClass
     @Override
     public void flushCache()
     {
-        System.err.println("SPARQListClass::flushCache");
+        LOG.info("SPARQListClass::flushCache");
         this.cachedSPARQList = null;
     }
 
     // return first or second column from user query
     public String returnCol(String hibquery, boolean first)
     {
-        System.err.println("SPARQListClass::returnCol: " + hibquery);
+        LOG.info("SPARQListClass::returnCol: " + hibquery);
         String firstCol = "-", secondCol = "-";
 
         int fromIndx = hibquery.indexOf("from");
@@ -420,7 +414,7 @@ public class SPARQListClass extends ListClass
     // the result of the second query, to retrieve the value
     public String getValue(String val, String sql, XWikiContext context)
     {
-        System.err.println("SPARQListClass::getValue");
+        LOG.info("SPARQListClass::getValue");
 
         // Make sure the query does not contain ORDER BY, as it will fail in certain databases.
         int orderByPos = sql.toLowerCase().lastIndexOf("order by");
@@ -453,7 +447,7 @@ public class SPARQListClass extends ListClass
     @Override
     public void displayEdit(StringBuffer buffer, String name, String prefix, BaseCollection object, XWikiContext context)
     {
-        System.err.println("SPARQListClass::displayEdit");
+        LOG.info("SPARQListClass::displayEdit");
         // input display
         if (getDisplayType().equals("input")) {
             input input = new input();
@@ -540,7 +534,7 @@ public class SPARQListClass extends ListClass
     @Override
     public void displayView(StringBuffer buffer, String name, String prefix, BaseCollection object, XWikiContext context)
     {
-        System.err.println("SPARQListClass::displayView");
+        LOG.info("SPARQListClass::displayView");
         if (isPicker() && getSparq().compareTo("") != 0) {
             BaseProperty prop = (BaseProperty) object.safeget(name);
             String val = "";
