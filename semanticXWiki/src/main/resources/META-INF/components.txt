@@ -5,3 +5,4 @@ com.objectsecurity.xwiki.SemanticQueryMacro
 com.objectsecurity.xwiki.RemovePropertyMacro
 com.objectsecurity.xwiki.GetSemanticPropertyMacro
 com.objectsecurity.xwiki.SemanticPropertyFromContextMacro
+com.objectsecurity.xwiki.objects.classes.SPARQListClassProvider
