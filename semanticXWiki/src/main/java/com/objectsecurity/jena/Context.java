@@ -1,6 +1,6 @@
 /**
  * Semantic XWiki Extension
- * Copyright (c) 2010, 2011, 2012 ObjectSecurity Ltd.
+ * Copyright (c) 2010, 2011, 2012, 2014 ObjectSecurity Ltd.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -21,6 +21,10 @@
  * from the European Union Seventh Framework Programme (FP7/2007-2013)
  * under grant agreement No FP7-242474.
  * 
+ * The research leading to these results has received funding
+ * from the European Union Seventh Framework Programme (FP7/2007-2013)
+ * under grant agreement No FP7-608142.
+ *
  * Partially funded by the European Space Agengy as part of contract
  * 4000101353 / 10 / NL / SFe
  *
@@ -45,6 +49,7 @@ import org.xwiki.observation.EventListener;
 import org.xwiki.observation.ObservationManager;
 import org.xwiki.observation.event.Event;
 
+import com.hp.hpl.jena.query.Dataset;
 import com.hp.hpl.jena.query.Query;
 import com.hp.hpl.jena.query.QueryExecution;
 import com.hp.hpl.jena.query.QueryExecutionFactory;
@@ -62,6 +67,8 @@ import com.hp.hpl.jena.rdf.model.StmtIterator;
 import com.hp.hpl.jena.sdb.SDBFactory;
 import com.hp.hpl.jena.sdb.Store;
 import com.hp.hpl.jena.sdb.store.StoreFactory;
+import com.hp.hpl.jena.tdb.TDBFactory;
+
 import com.objectsecurity.xwiki.util.DocumentUtil;
 import com.objectsecurity.xwiki.util.SymbolMapper;
 import com.xpn.xwiki.doc.XWikiDocument;
@@ -73,12 +80,30 @@ public class Context implements EventListener {
 		ADD,
 		MODIFY
 	}
+
+    enum BackendImpl {
+        UNKNOWN,
+        SDB,
+        TDB_DIRECTORY,
+        TDB_ASSEMBLER
+    }
 	
     private static final Context INSTANCE = new Context();
 	//private OntModel model_;
 	private Model model_;
 	private static final String storeFileName = "sdb.ttl";
-    
+
+        private static BackendImpl jena_backend_default = BackendImpl.SDB;
+        private static String jena_backend_db_default = "sdb.ttl";
+
+        private static final String SDB = "sdb";
+        private static final String TDB = "tdb";
+        private static final String ASSEMBLER = "assembler";
+        private static final String DIRECTORY = "directory";
+
+        private BackendImpl jena_backend = BackendImpl.UNKNOWN;
+        private String jena_backend_db = "";
+
 	private ComponentManager componentManager;
 
 	/**
@@ -104,10 +129,69 @@ public class Context implements EventListener {
         return INSTANCE;
     }
 
+    public void initJenaBackendFromEnv() {
+        String jback = System.getenv("JENA_BACKEND");
+        String backend_name = "";
+        String backend_family = "";
+        String backend_db_name = "";
+        if (jback != null && !jback.equals("")) {
+            StringTokenizer st = new StringTokenizer(jback, ":");
+            if (st.hasMoreTokens()) {
+                backend_name = st.nextToken();
+            }
+            if (st.hasMoreTokens() && backend_name.equals(TDB)) {
+                backend_family = st.nextToken();
+            }
+            if (st.hasMoreTokens()) {
+                backend_db_name = st.nextToken();
+            }
+            if (backend_name.equals(SDB)) {
+                jena_backend = BackendImpl.SDB;
+                jena_backend_db = backend_db_name;
+            }
+            else if (backend_name.equals(TDB) && backend_family.equals(DIRECTORY)) {
+                jena_backend = BackendImpl.TDB_DIRECTORY;
+                jena_backend_db = backend_db_name;
+            }
+            else if (backend_name.equals(TDB) && backend_family.equals(ASSEMBLER)) {
+                jena_backend = BackendImpl.TDB_ASSEMBLER;
+                jena_backend_db = backend_db_name;
+            }
+            else {
+                System.err.println("UNKNOWN backend! => will use default option...");
+                jena_backend = jena_backend_default;
+                jena_backend_db = jena_backend_db_default;
+            }
+            System.err.println("backend: " + jena_backend);
+            System.err.println("backend param: " + backend_db_name);
+        }
+        else {
+            System.err.println("default option!");
+            jena_backend = jena_backend_default;
+            jena_backend_db = jena_backend_db_default;
+        }
+    }
+
     synchronized public Model getModel() {
     	if (model_ == null) {
+            this.initJenaBackendFromEnv();
+            System.err.println("BACKEND: " + jena_backend);
+            System.err.println("DB: " + jena_backend_db);
+            if (jena_backend == BackendImpl.SDB) {
     		Store store = StoreFactory.create(storeFileName);
     		model_ = SDBFactory.connectDefaultModel(store);
+            }
+            else if (jena_backend == BackendImpl.TDB_DIRECTORY) {
+                Dataset ds = TDBFactory.createDataset(jena_backend_db);
+                model_ = ds.getDefaultModel();
+            }
+            else if (jena_backend == BackendImpl.TDB_ASSEMBLER) {
+                Dataset ds = TDBFactory.assembleDataset(jena_backend_db);
+                model_ = ds.getDefaultModel();
+            }
+            else {
+                System.err.println("ERROR: unknown Jena Backend!");
+            }
     		//Model m = SDBFactory.connectDefaultModel(store);
     		//Model m = SDBFactory.connectNamedModel(store, iri);
     		//model_ = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, m);
