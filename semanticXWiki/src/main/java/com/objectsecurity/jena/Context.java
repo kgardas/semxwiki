@@ -74,6 +74,9 @@ import com.objectsecurity.xwiki.util.SymbolMapper;
 import com.xpn.xwiki.doc.XWikiDocument;
 import com.xpn.xwiki.web.Utils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class Context implements EventListener {
 	
     public enum Mode {
@@ -88,7 +91,9 @@ public class Context implements EventListener {
         TDB_ASSEMBLER
     }
 	
-    private static final Context INSTANCE = new Context();
+    private static Context INSTANCE = null;
+    private static final Logger logger = LoggerFactory.getLogger(Context.class);
+
     //private OntModel model_;
     private Model model_;
     private static final String storeFileName = "sdb.ttl";
@@ -121,11 +126,14 @@ public class Context implements EventListener {
 
     	componentManager = Utils.getComponentManager();
     	ObservationManager om = this.getObservationManager();
-    	System.err.println("XWiki Context: registering observation listener.");
+        logger.info("XWiki Context: registering observation listener.");
     	om.addListener(this);
     }
 
     public static Context getInstance() {
+        if (INSTANCE == null) {
+            INSTANCE = new Context();
+        }
         return INSTANCE;
     }
 
@@ -158,15 +166,15 @@ public class Context implements EventListener {
                 jena_backend_db = backend_db_name;
             }
             else {
-                System.err.println("UNKNOWN backend! => will use default option...");
+                logger.info("UNKNOWN backend! => will use default option...");
                 jena_backend = jena_backend_default;
                 jena_backend_db = jena_backend_db_default;
             }
-            System.err.println("backend: " + jena_backend);
-            System.err.println("backend param: " + backend_db_name);
+            logger.info("backend: " + jena_backend);
+            logger.info("backend param: " + backend_db_name);
         }
         else {
-            System.err.println("default option!");
+            logger.info("default option!");
             jena_backend = jena_backend_default;
             jena_backend_db = jena_backend_db_default;
         }
@@ -175,8 +183,8 @@ public class Context implements EventListener {
     synchronized public Model getModel() {
     	if (model_ == null) {
             this.initJenaBackendFromEnv();
-            System.err.println("BACKEND: " + jena_backend);
-            System.err.println("DB: " + jena_backend_db);
+            logger.info("BACKEND: " + jena_backend);
+            logger.info("DB: " + jena_backend_db);
             if (jena_backend == BackendImpl.SDB) {
     		Store store = StoreFactory.create(storeFileName);
     		model_ = SDBFactory.connectDefaultModel(store);
@@ -190,12 +198,12 @@ public class Context implements EventListener {
                 model_ = ds.getDefaultModel();
             }
             else {
-                System.err.println("ERROR: unknown Jena Backend!");
+                logger.error("ERROR: unknown Jena Backend!");
             }
             //Model m = SDBFactory.connectDefaultModel(store);
             //Model m = SDBFactory.connectNamedModel(store, iri);
             //model_ = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, m);
-            System.err.println("Context: created ontology model: " + model_);
+            logger.info("Context: created ontology model: " + model_);
     	}
     	return model_;
     }
@@ -241,28 +249,28 @@ public class Context implements EventListener {
         QueryExecution qexec = QueryExecutionFactory.create(query, m);
         HashMap<String, String> name_link_map = new HashMap<String, String>();
         HashMap<String, String> link_value_remap = new HashMap<String, String>();
-        System.err.println("header len: " + header.length);
-        System.err.println("linksAttrs len: " + linksAttrs.length);
+        logger.debug("header len: " + header.length);
+        logger.debug("linksAttrs len: " + linksAttrs.length);
         for (int i = 0; i<linksAttrs.length; i++) {
             String tmp = linksAttrs[i];
             String link = tmp.substring(0, tmp.indexOf(">"));
             String name = tmp.substring(tmp.indexOf(">") + 1, tmp.length());
-            System.err.println("link: " + link);
-            System.err.println("name: " + name);
+            logger.debug("link: " + link);
+            logger.debug("name: " + name);
             name_link_map.put(name, link);
         }
         for (int i = 0; i<linksValuesRemapping.length; i++) {
             String tmp = linksValuesRemapping[i];
             String res = tmp.substring(0, tmp.indexOf(">"));
             String link = tmp.substring(tmp.indexOf(">") + 1, tmp.length());
-            System.err.println("resource: " + res);
-            System.err.println("link: " + link);
+            logger.debug("resource: " + res);
+            logger.debug("link: " + link);
             link_value_remap.put(res, link);
         }
         String[] variable_names;
     	try {
             ResultSet results = qexec.execSelect() ;
-            System.err.println("result set hasNext?: " + results.hasNext());
+            logger.debug("result set hasNext?: " + results.hasNext());
             for ( ; results.hasNext(); ) {
                 QuerySolution sol = results.next();
                 System.out.println(sol);
@@ -297,8 +305,8 @@ public class Context implements EventListener {
                         else {
                             pair.name = "<not literal type>";
                         }
-                        System.err.println("pair.name: " + pair.name);
-                        System.err.println("r: " + r);
+                        logger.debug("pair.name: " + pair.name);
+                        logger.debug("r: " + r);
                         if (r != null) {
                             if (r.isLiteral()) {
                                 pair.link = r.asLiteral().toString();
@@ -309,20 +317,20 @@ public class Context implements EventListener {
                             else {
                                 pair.link = "<not literal type>";
                             }
-                            System.err.println("pair.link: " + pair.link);
+                            logger.debug("pair.link: " + pair.link);
                             // need to process link if linksValuesRemapping is used
-                            System.err.println("empty remap?: " + link_value_remap.isEmpty());
+                            logger.debug("empty remap?: " + link_value_remap.isEmpty());
                             if (!link_value_remap.isEmpty()) {
                                 Set<String> keys = link_value_remap.keySet();
-                                System.err.println("keys: " + keys.toString());
+                                logger.debug("keys: " + keys.toString());
                                 for (Iterator<String> it = keys.iterator(); it.hasNext(); ) {
                                     String key = it.next();
-                                    System.err.println("key: " + key);
-                                    System.err.println("link: " + pair.link);
+                                    logger.debug("key: " + key);
+                                    logger.debug("link: " + pair.link);
                                     if (pair.link.contains(key)) {
                                         // link contains the resource URL which needs to be re-mapped
                                         String tmp = pair.link.replace(key, link_value_remap.get(key));
-                                        System.err.println("remapping link : " + pair.link + " to " + tmp);
+                                        logger.debug("remapping link : " + pair.link + " to " + tmp);
                                         pair.link = tmp;
                                     }
                                 }
@@ -444,9 +452,9 @@ public class Context implements EventListener {
     }
 
     synchronized public Vector<Vector<String>> getPropertyTableForResource(String res) {
-    	System.err.println("Context: table for resource: " + res);
+        logger.debug("Context: table for resource: " + res);
     	String tres = SymbolMapper.transform(res, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
-    	System.err.println("Context: resource translated to: " + tres);
+        logger.debug("Context: resource translated to: " + tres);
     	Vector<Vector<String>> retval = new Vector<Vector<String>>();
         StmtIterator iter = this.getModel().listStatements(new SimpleSelector(this.getModel().createResource(tres), null, (RDFNode)null) {
                 public boolean selects(Statement s) {
@@ -459,7 +467,7 @@ public class Context implements EventListener {
             row.add(stmt.getPredicate().toString());
             //row.add(stmt.getPredicate().getLocalName());
             row.add(stmt.getLiteral().toString());
-            System.err.println("adding row: " + row.toString());
+            logger.debug("adding row: " + row.toString());
             retval.add(row);
         }
         return retval;
@@ -472,9 +480,9 @@ public class Context implements EventListener {
     }
 
     synchronized public void setProperty(String resource, Property property, String property_value, Mode mode) {
-    	System.err.println("Context: set property on resource: " + resource);
+        logger.debug("Context: set property on resource: " + resource);
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
-    	System.err.println("Context: resource translated to: " + tres);
+        logger.debug("Context: resource translated to: " + tres);
     	Resource res = this.getModel().getResource(tres);
     	if (res == null)
             res = this.getModel().createResource();
@@ -494,7 +502,7 @@ public class Context implements EventListener {
     	Resource res = this.getModel().getResource(tres);
     	if (res == null)
             res = this.getModel().createResource(resource);
-    	System.err.println("removeAll properties: `" + property.toString() + "' on resource: `" + res.toString() + "'");
+        logger.debug("removeAll properties: `" + property.toString() + "' on resource: `" + res.toString() + "'");
     	res.removeAll(property);
     }
     
@@ -514,7 +522,7 @@ public class Context implements EventListener {
 
     @Override
 	public List<Event> getEvents() {
-        System.err.println("XWiki Context: getEvents called");
+        logger.debug("XWiki Context: getEvents called");
         return Arrays.<Event>asList(new DocumentDeletedEvent(), new DocumentUpdatingEvent());
     }
 
@@ -526,20 +534,20 @@ public class Context implements EventListener {
     @Override
 	public void onEvent(Event arg0, Object arg1, Object arg2) {
         // TODO Auto-generated method stub
-        System.err.println("XWiki: EVENT: " + arg0.toString() + ", arg1: " + arg1 + ", arg2: " + arg2);
-        System.err.println("XWiki: classes: " + arg0.getClass().getName() + ", arg1: " + arg1.getClass().getName() + ", arg2: " + arg2.getClass().getName());
+        logger.debug("XWiki: EVENT: " + arg0.toString() + ", arg1: " + arg1 + ", arg2: " + arg2);
+        logger.debug("XWiki: classes: " + arg0.getClass().getName() + ", arg1: " + arg1.getClass().getName() + ", arg2: " + arg2.getClass().getName());
         XWikiDocument doc = (XWikiDocument)arg1;
         //String res = doc.getURL("view", (XWikiContext)arg2);
         String name = DocumentUtil.computeFullDocName(doc.getDocumentReference());
         String tres = SymbolMapper.transform(name, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
-        System.err.println("tres: " + tres);
+        logger.debug("tres: " + tres);
     	Resource res = this.getModel().getResource(tres);
     	res.removeProperties();
-    	System.err.println("props after delete: " + this.query("SELECT ?prop WHERE { <" + tres + "> ?prop ?prop_value }", new String[] {"prop"}, false));
+        logger.debug("props after delete: " + this.query("SELECT ?prop WHERE { <" + tres + "> ?prop ?prop_value }", new String[] {"prop"}, false));
     	StmtIterator it = res.listProperties();
     	while (it.hasNext()) {
             Statement st = it.next();
-            System.err.println("prop: " + st);
+            logger.debug("prop: " + st);
     	}
         //		//Query query = QueryFactory.create("SELECT ?prop WHERE { ?ref <http://www.objectsecurity.com/NextGenRE/XWikiPage_properties_for_deletion> ?prop }") ;
         //		Query query = QueryFactory.create("SELECT ?prop WHERE { <" + res + "> ?prop ?prop_value }");
