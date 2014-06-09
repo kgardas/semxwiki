@@ -1,6 +1,6 @@
 /**
  * Semantic XWiki Extension
- * Copyright (c) 2010, 2011, 2012 ObjectSecurity Ltd.
+ * Copyright (c) 2010, 2011, 2012, 2014 ObjectSecurity Ltd.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -21,6 +21,10 @@
  * from the European Union Seventh Framework Programme (FP7/2007-2013)
  * under grant agreement No FP7-242474.
  * 
+ * The research leading to these results has received funding
+ * from the European Union Seventh Framework Programme (FP7/2007-2013)
+ * under grant agreement No FP7-608142.
+ *
  * Partially funded by the European Space Agengy as part of contract
  * 4000101353 / 10 / NL / SFe
  *
@@ -31,6 +35,9 @@ package com.objectsecurity.xwiki.util;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.StringTokenizer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SymbolMapper {
 	
@@ -62,12 +69,12 @@ public class SymbolMapper {
                     initMaps();
                 }
                 StringBuffer buf = new StringBuffer();
-                System.err.println("SymbolMapper: physical to xwiki name translation using symbolic name strategy");
-                System.err.println("SymbolMapper: translating: " + value);
+                logger.debug("SymbolMapper: physical to xwiki name translation using symbolic name strategy");
+                logger.debug("SymbolMapper: translating: " + value);
                 // do we need translation at all?
                 if (!(value.startsWith("http")
                       || value.startsWith("www"))) {
-                    System.err.println("SymbolMapper: translation not needed, returning: " + value);
+                    logger.debug("SymbolMapper: translation not needed, returning: " + value);
                     return value;
                 }
                 StringTokenizer st = new StringTokenizer(value, ".: /_#", true);
@@ -86,13 +93,13 @@ public class SymbolMapper {
                 // E.g. https://www.esa.org/bla/bleh -- bleh is name of page, while
                 // from  https://www.esa.org/bla we form space name
                 String tmp = buf.toString();
-                System.err.println("SymbolMapper: buf: " + tmp);
+                logger.debug("SymbolMapper: buf: " + tmp);
                 int spos = tmp.lastIndexOf("_slash_");
                 int hpos = tmp.lastIndexOf("_hash_");
                 int pos = (spos > hpos) ? spos : hpos;
-                System.err.println("spos: " + spos);
-                System.err.println("hpos: " + hpos);
-                System.err.println("pos: " + pos);
+                logger.debug("spos: " + spos);
+                logger.debug("hpos: " + hpos);
+                logger.debug("pos: " + pos);
                 String retval = "";
                 if (pos != -1) {
                     String space = tmp.substring(0, pos);
@@ -102,15 +109,15 @@ public class SymbolMapper {
                 else {
                     retval = tmp;
                 }
-                System.err.println("SymbolMapper: -> " + retval);
+                logger.debug("SymbolMapper: -> " + retval);
                 return retval;
             }
             else {
-                System.err.println("SymbolMapper: xwiki to physical name translation using symbolic name strategy");
-                System.err.println("SymbolMapper: translating: " + value);
+                logger.debug("SymbolMapper: xwiki to physical name translation using symbolic name strategy");
+                logger.debug("SymbolMapper: translating: " + value);
                 if (!(value.contains("_slash_")
                       ||value.contains("_hash_"))) {
-                    System.err.println("SymbolMapper: translation not needed, returning: " + value);
+                    logger.debug("SymbolMapper: translation not needed, returning: " + value);
                     return value;
                 }
                 // first we need to translate dot dividing name into space and page name
@@ -129,7 +136,7 @@ public class SymbolMapper {
                         buf.append(elem);
                     }
                 }
-                System.err.println("SymbolMapper: -> " + buf.toString());
+                logger.debug("SymbolMapper: -> " + buf.toString());
                 return buf.toString();
             }
         }
@@ -138,4 +145,6 @@ public class SymbolMapper {
 		
     static Map<String, String> phys_to_xwiki_map;
     static Map<String, String> xwiki_to_phys_map;
+
+    private static final Logger logger = LoggerFactory.getLogger(SymbolMapper.class);
 }
