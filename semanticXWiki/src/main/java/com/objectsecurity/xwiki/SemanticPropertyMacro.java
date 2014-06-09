@@ -48,69 +48,69 @@ import com.xpn.xwiki.doc.XWikiDocument;
 @Component("semProp")
 public class SemanticPropertyMacro extends AbstractMacro<SemanticPropertyMacroParameters> {
 
-	public SemanticPropertyMacro() {
-		super("semProp", DESCRIPTION, SemanticPropertyMacroParameters.class);
-		System.err.println();
-		System.err.println();
-		System.err.println("Semantic property macro is being initialized...");
-		System.err.println();
-	}
+    public SemanticPropertyMacro() {
+        super("semProp", DESCRIPTION, SemanticPropertyMacroParameters.class);
+        System.err.println();
+        System.err.println();
+        System.err.println("Semantic property macro is being initialized...");
+        System.err.println();
+    }
 
-	@Override
-	public List<Block> execute(SemanticPropertyMacroParameters arg0,
-			String arg1, MacroTransformationContext arg2)
-			throws MacroExecutionException {
+    @Override
+    public List<Block> execute(SemanticPropertyMacroParameters arg0,
+                                   String arg1, MacroTransformationContext arg2)
+        throws MacroExecutionException {
 
-		ExecutionContext ectx = execution.getContext();
-		XWikiContext context = (XWikiContext) ectx.getProperty("xwikicontext");
-		XWikiDocument doc = context.getDoc();
-		String ref = doc.getURL("view", context);
-		String name = DocumentUtil.computeFullDocName(doc.getDocumentReference());
-		Context ctx = Context.getInstance();
-		String p = arg0.getValue();
-		String m = arg0.getMode();
-	    Mode mode = Mode.MODIFY;
-	    if (m != null && m.equals("ADD")) {
-	    	mode = Mode.ADD;
-	    }
-		int pos = p.lastIndexOf("::");
-		if (pos == -1)
-			return new ArrayList<Block>();					
-		String property = p.substring(0, pos );
-		System.err.println("property `" + property + "'");
-		String property_value = p.substring(pos + 2);
-		System.err.println("property_value `" + property_value + "'");
-		int posD = property.lastIndexOf('/');
-		int posH = property.lastIndexOf('#');
-		pos = (posD < posH) ? posH : posD;
-		String property_prefix = property.substring(0, pos + 1);
-		String property_name = property.substring(pos + 1);
-		System.err.println("prop prefix: `" + property_prefix + "'");
-		System.err.println("prop name: `" + property_name + "'");
-		try {
-			ctx.begin();
-			if (property_value.equals("<this>"))
-				property_value = ref;
-			ctx.setProperty(name, property_prefix, property_name, property_value, mode);
-			ctx.commit();
-		}
-		catch (Exception ex) {
-			ex.printStackTrace();
-			ctx.abort();
-			ArrayList<Block> l = new ArrayList<Block>();
-			l.add(new WordBlock("<set property operation aborded!>"));
-			return l;
-		}
-		return new ArrayList<Block>();
-	}
+        ExecutionContext ectx = execution.getContext();
+        XWikiContext context = (XWikiContext) ectx.getProperty("xwikicontext");
+        XWikiDocument doc = context.getDoc();
+        String ref = doc.getURL("view", context);
+        String name = DocumentUtil.computeFullDocName(doc.getDocumentReference());
+        Context ctx = Context.getInstance();
+        String p = arg0.getValue();
+        String m = arg0.getMode();
+        Mode mode = Mode.MODIFY;
+        if (m != null && m.equals("ADD")) {
+            mode = Mode.ADD;
+        }
+        int pos = p.lastIndexOf("::");
+        if (pos == -1)
+            return new ArrayList<Block>();
+        String property = p.substring(0, pos );
+        System.err.println("property `" + property + "'");
+        String property_value = p.substring(pos + 2);
+        System.err.println("property_value `" + property_value + "'");
+        int posD = property.lastIndexOf('/');
+        int posH = property.lastIndexOf('#');
+        pos = (posD < posH) ? posH : posD;
+        String property_prefix = property.substring(0, pos + 1);
+        String property_name = property.substring(pos + 1);
+        System.err.println("prop prefix: `" + property_prefix + "'");
+        System.err.println("prop name: `" + property_name + "'");
+        try {
+            ctx.begin();
+            if (property_value.equals("<this>"))
+                property_value = ref;
+            ctx.setProperty(name, property_prefix, property_name, property_value, mode);
+            ctx.commit();
+        }
+        catch (Exception ex) {
+            ex.printStackTrace();
+            ctx.abort();
+            ArrayList<Block> l = new ArrayList<Block>();
+            l.add(new WordBlock("<set property operation aborded!>"));
+            return l;
+        }
+        return new ArrayList<Block>();
+    }
 
-	@Override
-	public boolean supportsInlineMode() {
-		return true;
-	}
+    @Override
+    public boolean supportsInlineMode() {
+        return true;
+    }
 
-	private static final String DESCRIPTION = "Semantic property macro";
+    private static final String DESCRIPTION = "Semantic property macro";
 	
-	@Inject
-	private Execution execution;
+    @Inject
+    private Execution execution;
 }
