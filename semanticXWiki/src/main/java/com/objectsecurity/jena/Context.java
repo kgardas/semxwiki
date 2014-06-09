@@ -521,18 +521,18 @@ public class Context implements EventListener {
     }
 
     @Override
-	public List<Event> getEvents() {
+    public List<Event> getEvents() {
         logger.debug("XWiki Context: getEvents called");
         return Arrays.<Event>asList(new DocumentDeletedEvent(), new DocumentUpdatingEvent());
     }
 
     @Override
-	public String getName() {
+    public String getName() {
         return "XWiki Semantics: Context interceptor code";
     }
 
     @Override
-	public void onEvent(Event arg0, Object arg1, Object arg2) {
+    public void onEvent(Event arg0, Object arg1, Object arg2) {
         // TODO Auto-generated method stub
         logger.debug("XWiki: EVENT: " + arg0.toString() + ", arg1: " + arg1 + ", arg2: " + arg2);
         logger.debug("XWiki: classes: " + arg0.getClass().getName() + ", arg1: " + arg1.getClass().getName() + ", arg2: " + arg2.getClass().getName());
