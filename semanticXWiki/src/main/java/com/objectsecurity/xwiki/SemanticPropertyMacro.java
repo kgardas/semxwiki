@@ -1,6 +1,6 @@
 /**
  * Semantic XWiki Extension
- * Copyright (c) 2010, 2011, 2012 ObjectSecurity Ltd.
+ * Copyright (c) 2010, 2011, 2012, 2014 ObjectSecurity Ltd.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -20,6 +20,10 @@
  * The research leading to these results has received funding
  * from the European Union Seventh Framework Programme (FP7/2007-2013)
  * under grant agreement No FP7-242474.
+ *
+ * The research leading to these results has received funding
+ * from the European Union Seventh Framework Programme (FP7/2007-2013)
+ * under grant agreement No FP7-608142.
  *
  * Written by Karel Gardas, <kgardas@objectsecurity.com>
  */
@@ -45,15 +49,15 @@ import com.objectsecurity.xwiki.util.DocumentUtil;
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.doc.XWikiDocument;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Component("semProp")
 public class SemanticPropertyMacro extends AbstractMacro<SemanticPropertyMacroParameters> {
 
     public SemanticPropertyMacro() {
         super("semProp", DESCRIPTION, SemanticPropertyMacroParameters.class);
-        System.err.println();
-        System.err.println();
-        System.err.println("Semantic property macro is being initialized...");
-        System.err.println();
+        logger.debug("Semantic property macro is being initialized...");
     }
 
     @Override
@@ -77,16 +81,16 @@ public class SemanticPropertyMacro extends AbstractMacro<SemanticPropertyMacroPa
         if (pos == -1)
             return new ArrayList<Block>();
         String property = p.substring(0, pos );
-        System.err.println("property `" + property + "'");
+        logger.debug("property `" + property + "'");
         String property_value = p.substring(pos + 2);
-        System.err.println("property_value `" + property_value + "'");
+        logger.debug("property_value `" + property_value + "'");
         int posD = property.lastIndexOf('/');
         int posH = property.lastIndexOf('#');
         pos = (posD < posH) ? posH : posD;
         String property_prefix = property.substring(0, pos + 1);
         String property_name = property.substring(pos + 1);
-        System.err.println("prop prefix: `" + property_prefix + "'");
-        System.err.println("prop name: `" + property_name + "'");
+        logger.debug("prop prefix: `" + property_prefix + "'");
+        logger.debug("prop name: `" + property_name + "'");
         try {
             ctx.begin();
             if (property_value.equals("<this>"))
@@ -113,4 +117,5 @@ public class SemanticPropertyMacro extends AbstractMacro<SemanticPropertyMacroPa
 	
     @Inject
     private Execution execution;
+    private static final Logger logger = LoggerFactory.getLogger(SemanticPropertyMacro.class);
 }
