@@ -492,12 +492,12 @@ public class Context implements EventListener {
     	res.addProperty(property, property_value);
     }
     
-    public void removeProperty(String resource, String property_prefix, String property_name) {
+    synchronized public void removeProperty(String resource, String property_prefix, String property_name) {
     	Property property = this.getModel().createProperty(property_prefix, property_name);
     	this.removeProperty(resource, property);
     }
 
-    public void removeProperty(String resource, Property property) {
+    synchronized public void removeProperty(String resource, Property property) {
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
     	Resource res = this.getModel().getResource(tres);
     	if (res == null)
@@ -506,12 +506,12 @@ public class Context implements EventListener {
     	res.removeAll(property);
     }
     
-    public String getProperty(String resource, String property_prefix, String property_name) {
+    synchronized public String getProperty(String resource, String property_prefix, String property_name) {
     	Property property = this.getModel().createProperty(property_prefix, property_name);
     	return this.getProperty(resource, property);
     }
 
-    public String getProperty(String resource, Property property) {
+    synchronized public String getProperty(String resource, Property property) {
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
     	Resource res = this.getModel().getResource(tres);
     	if (res == null)
