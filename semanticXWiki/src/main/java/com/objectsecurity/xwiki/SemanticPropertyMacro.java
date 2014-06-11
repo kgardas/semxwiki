@@ -95,7 +95,9 @@ public class SemanticPropertyMacro extends AbstractMacro<SemanticPropertyMacroPa
             ctx.begin();
             if (property_value.equals("<this>"))
                 property_value = ref;
-            ctx.setProperty(name, property_prefix, property_name, property_value, mode);
+            String tmp_prop = ctx.getProperty(name, property_prefix, property_name);
+            if (tmp_prop == null || mode == Mode.ADD || !tmp_prop.equals(property_value))
+                ctx.setProperty(name, property_prefix, property_name, property_value, mode);
             ctx.commit();
         }
         catch (Exception ex) {
