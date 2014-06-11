@@ -543,12 +543,14 @@ public class Context implements EventListener {
         logger.debug("tres: " + tres);
     	Resource res = this.getModel().getResource(tres);
     	res.removeProperties();
-        logger.debug("props after delete: " + this.query("SELECT ?prop WHERE { <" + tres + "> ?prop ?prop_value }", new String[] {"prop"}, false));
-    	StmtIterator it = res.listProperties();
-    	while (it.hasNext()) {
-            Statement st = it.next();
-            logger.debug("prop: " + st);
-    	}
+        if (logger.isDebugEnabled()) {
+            logger.debug("props after delete: " + this.query("SELECT ?prop WHERE { <" + tres + "> ?prop ?prop_value }", new String[] {"prop"}, false));
+            StmtIterator it = res.listProperties();
+            while (it.hasNext()) {
+                Statement st = it.next();
+                logger.debug("prop: " + st);
+            }
+        }
         //		//Query query = QueryFactory.create("SELECT ?prop WHERE { ?ref <http://www.objectsecurity.com/NextGenRE/XWikiPage_properties_for_deletion> ?prop }") ;
         //		Query query = QueryFactory.create("SELECT ?prop WHERE { <" + res + "> ?prop ?prop_value }");
         //		QueryExecution qexec = QueryExecutionFactory.create(query, this.getModel()) ;
