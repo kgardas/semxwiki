@@ -98,6 +98,8 @@ public class Context implements EventListener {
 
     //private OntModel model_;
     private Model model_;
+    private Object model_lock_;
+
     private static final String storeFileName = "sdb.ttl";
 
     private static BackendImpl jena_backend_default = BackendImpl.SDB;
@@ -125,7 +127,7 @@ public class Context implements EventListener {
     	// Initialize Rendering components and allow getting instances
     	//EmbeddableComponentManager componentManager = new EmbeddableComponentManager();
     	//componentManager.initialize(this.getClass().getClassLoader());
-
+        model_lock_ = new Object();
     	componentManager = Utils.getComponentManager();
     	ObservationManager om = this.getObservationManager();
         logger.info("XWiki Context: registering observation listener.");
@@ -186,31 +188,35 @@ public class Context implements EventListener {
         }
     }
 
-    synchronized public Model getModel() {
+    public Model getModel() {
     	if (model_ == null) {
-            this.initJenaBackendFromEnv();
-            logger.info("BACKEND: " + jena_backend);
-            logger.info("DB: " + jena_backend_db);
-            if (jena_backend == BackendImpl.SDB) {
-    		Store store = StoreFactory.create(storeFileName);
-    		model_ = SDBFactory.connectDefaultModel(store);
+            synchronized (model_lock_) {
+                if (model_ == null) {
+                    this.initJenaBackendFromEnv();
+                    logger.info("BACKEND: " + jena_backend);
+                    logger.info("DB: " + jena_backend_db);
+                    if (jena_backend == BackendImpl.SDB) {
+                        Store store = StoreFactory.create(storeFileName);
+                        model_ = SDBFactory.connectDefaultModel(store);
+                    }
+                    else if (jena_backend == BackendImpl.TDB_DIRECTORY) {
+                        Dataset ds = TDBFactory.createDataset(jena_backend_db);
+                        model_ = ds.getDefaultModel();
+                    }
+                    else if (jena_backend == BackendImpl.TDB_ASSEMBLER) {
+                        Dataset ds = TDBFactory.assembleDataset(jena_backend_db);
+                        model_ = ds.getDefaultModel();
+                    }
+                    else {
+                        logger.error("ERROR: unknown Jena Backend!");
+                    }
+                    //Model m = SDBFactory.connectDefaultModel(store);
+                    //Model m = SDBFactory.connectNamedModel(store, iri);
+                    //model_ = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, m);
+                    logger.info("Context: created ontology model: " + model_);
+                }
             }
-            else if (jena_backend == BackendImpl.TDB_DIRECTORY) {
-                Dataset ds = TDBFactory.createDataset(jena_backend_db);
-                model_ = ds.getDefaultModel();
-            }
-            else if (jena_backend == BackendImpl.TDB_ASSEMBLER) {
-                Dataset ds = TDBFactory.assembleDataset(jena_backend_db);
-                model_ = ds.getDefaultModel();
-            }
-            else {
-                logger.error("ERROR: unknown Jena Backend!");
-            }
-            //Model m = SDBFactory.connectDefaultModel(store);
-            //Model m = SDBFactory.connectNamedModel(store, iri);
-            //model_ = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, m);
-            logger.info("Context: created ontology model: " + model_);
-    	}
+        }
     	return model_;
     }
 
