@@ -92,6 +92,8 @@ public class Context implements EventListener {
     }
 	
     private static Context INSTANCE = null;
+    private static Object INSTANCE_lock = new Object();
+
     private static final Logger logger = LoggerFactory.getLogger(Context.class);
 
     //private OntModel model_;
@@ -132,7 +134,11 @@ public class Context implements EventListener {
 
     public static Context getInstance() {
         if (INSTANCE == null) {
-            INSTANCE = new Context();
+            synchronized (INSTANCE_lock) {
+                if (INSTANCE == null) {
+                    INSTANCE = new Context();
+                }
+            }
         }
         return INSTANCE;
     }
