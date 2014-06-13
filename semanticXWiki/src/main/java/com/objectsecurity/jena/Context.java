@@ -60,6 +60,7 @@ import com.hp.hpl.jena.query.QuerySolution;
 import com.hp.hpl.jena.query.ResultSet;
 import com.hp.hpl.jena.query.ResultSetFormatter;
 import com.hp.hpl.jena.rdf.model.Model;
+import com.hp.hpl.jena.rdf.model.ModelFactory;
 import com.hp.hpl.jena.rdf.model.Property;
 import com.hp.hpl.jena.rdf.model.RDFNode;
 import com.hp.hpl.jena.rdf.model.Resource;
@@ -92,7 +93,8 @@ public class Context implements EventListener {
         SDB,
         TDB_DIRECTORY,
         TDB_ASSEMBLER,
-        VIRTUOSO
+        VIRTUOSO,
+        IN_MEMORY
     }
 	
     private static Context INSTANCE = null;
@@ -106,8 +108,8 @@ public class Context implements EventListener {
 
     private static final String storeFileName = "sdb.ttl";
 
-    private static BackendImpl jena_backend_default = BackendImpl.SDB;
-    private static String jena_backend_db_default = "sdb.ttl";
+    private static BackendImpl jena_backend_default = BackendImpl.IN_MEMORY;
+    private static String jena_backend_db_default = "";
 
     private static final String SDB = "sdb";
     private static final String TDB = "tdb";
@@ -118,6 +120,8 @@ public class Context implements EventListener {
 
     private BackendImpl jena_backend = BackendImpl.UNKNOWN;
     private String jena_backend_db = "";
+
+    private Boolean model_supports_txs_ = false;
 
     private ComponentManager componentManager;
 
@@ -205,17 +209,37 @@ public class Context implements EventListener {
                     this.initJenaBackendFromEnv();
                     logger.info("BACKEND: " + jena_backend);
                     logger.info("DB: " + jena_backend_db);
-                    if (jena_backend == BackendImpl.SDB) {
-                        Store store = StoreFactory.create(storeFileName);
-                        model_ = SDBFactory.connectDefaultModel(store);
+                    if (jena_backend == BackendImpl.IN_MEMORY) {
+                        model_ = ModelFactory.createDefaultModel();
+                    }
+                    else if (jena_backend == BackendImpl.SDB) {
+                        try {
+                            Store store = StoreFactory.create(storeFileName);
+                            model_ = SDBFactory.connectDefaultModel(store);
+                            // we intentionally leave model_supports_txs_
+                            // = false here, since SDB layer does not
+                            // support running diferrent transactions
+                            // in different threads. In such case we
+                            // always get SDBException: already in
+                            // transaction exception.
+                            // This way SDB will use its own autocommit
+                            // support and everything will be safe even
+                            // when fires from multiple threads
+                        }
+                        catch (com.hp.hpl.jena.shared.NotFoundException ex) {
+                            logger.error("SDB configuration file is missing, reverting to INMEM storage");
+                            model_ = ModelFactory.createDefaultModel();
+                        }
                     }
                     else if (jena_backend == BackendImpl.TDB_DIRECTORY) {
                         Dataset ds = TDBFactory.createDataset(jena_backend_db);
                         model_ = ds.getDefaultModel();
+                        model_supports_txs_ = true;
                     }
                     else if (jena_backend == BackendImpl.TDB_ASSEMBLER) {
                         Dataset ds = TDBFactory.assembleDataset(jena_backend_db);
                         model_ = ds.getDefaultModel();
+                        model_supports_txs_ = true;
                     }
                     else if (jena_backend == BackendImpl.VIRTUOSO) {
                         // we resolve VirtModel by reflection since
@@ -233,6 +257,7 @@ public class Context implements EventListener {
                             }
                             Method m = c.getDeclaredMethod("openDefaultModel", prms);
                             model_ = (Model)m.invoke(null, VIRTUOSO_URL, "dba", "dba");
+                            model_supports_txs_ = true;
                         }
                         catch (Exception ex) {
                             logger.error("Can't resolve and invoke virtuoso's VirtModel class: " + ex);
@@ -252,26 +277,28 @@ public class Context implements EventListener {
     }
 
     synchronized public void begin() {
-        //    	if (this.getModel().supportsTransactions()) {
-        this.getModel().begin();
-        //    	}
+        if (model_supports_txs_) {
+            this.getModel().begin();
+        }
     }
 
     synchronized public void commit() {
-        //    	if (this.getModel().supportsTransactions()) {
-        Model m = this.getModel();
-        m.enterCriticalSection(Lock.WRITE);
-        try {
-            m.commit();
+        if (model_supports_txs_) {
+            Model m = this.getModel();
+            m.enterCriticalSection(Lock.WRITE);
+            try {
+                m.commit();
+            }
+            finally {
+                m.leaveCriticalSection();
+            }
         }
-        finally {
-            m.leaveCriticalSection();
-        }
-        //    	}
     }
 
     synchronized public void abort() {
-    	this.getModel().abort();
+        if (model_supports_txs_) {
+            this.getModel().abort();
+        }
     }
 
     public String query(String str) {
