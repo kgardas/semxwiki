@@ -41,6 +41,8 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.Vector;
 
+import java.lang.reflect.Method;
+
 import org.xwiki.bridge.event.DocumentDeletedEvent;
 import org.xwiki.bridge.event.DocumentUpdatingEvent;
 import org.xwiki.component.manager.ComponentLookupException;
@@ -89,7 +91,8 @@ public class Context implements EventListener {
         UNKNOWN,
         SDB,
         TDB_DIRECTORY,
-        TDB_ASSEMBLER
+        TDB_ASSEMBLER,
+        VIRTUOSO
     }
 	
     private static Context INSTANCE = null;
@@ -110,6 +113,8 @@ public class Context implements EventListener {
     private static final String TDB = "tdb";
     private static final String ASSEMBLER = "assembler";
     private static final String DIRECTORY = "directory";
+    private static final String VIRTUOSO = "virtuoso";
+    private static final String VIRTUOSO_URL = "jdbc:virtuoso://localhost:1111";
 
     private BackendImpl jena_backend = BackendImpl.UNKNOWN;
     private String jena_backend_db = "";
@@ -174,6 +179,10 @@ public class Context implements EventListener {
                 jena_backend = BackendImpl.TDB_ASSEMBLER;
                 jena_backend_db = backend_db_name;
             }
+            else if (backend_name.equals(VIRTUOSO)) {
+                jena_backend = BackendImpl.VIRTUOSO;
+                jena_backend_db = VIRTUOSO_URL;
+            }
             else {
                 logger.info("UNKNOWN backend! => will use default option...");
                 jena_backend = jena_backend_default;
@@ -207,6 +216,27 @@ public class Context implements EventListener {
                     else if (jena_backend == BackendImpl.TDB_ASSEMBLER) {
                         Dataset ds = TDBFactory.assembleDataset(jena_backend_db);
                         model_ = ds.getDefaultModel();
+                    }
+                    else if (jena_backend == BackendImpl.VIRTUOSO) {
+                        // we resolve VirtModel by reflection since
+                        // Virtuoso's Jena provider is not well
+                        // packaged for Maven use so far which would
+                        // make compilation of the code harder
+                        // for the users. This way (using reflection)
+                        // it's just enough to put it's jar(s) into
+                        // XWiki's lib directory for runtime.
+                        try {
+                            Class c = Class.forName("virtuoso.jena.driver.VirtModel");
+                            Class[] prms = new Class[3];
+                            for (int i = 0; i < 3; i++) {
+                                prms[i] = String.class;
+                            }
+                            Method m = c.getDeclaredMethod("openDefaultModel", prms);
+                            model_ = (Model)m.invoke(null, VIRTUOSO_URL, "dba", "dba");
+                        }
+                        catch (Exception ex) {
+                            logger.error("Can't resolve and invoke virtuoso's VirtModel class: " + ex);
+                        }
                     }
                     else {
                         logger.error("ERROR: unknown Jena Backend!");
