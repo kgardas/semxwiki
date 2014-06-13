@@ -68,6 +68,7 @@ import com.hp.hpl.jena.sdb.SDBFactory;
 import com.hp.hpl.jena.sdb.Store;
 import com.hp.hpl.jena.sdb.store.StoreFactory;
 import com.hp.hpl.jena.tdb.TDBFactory;
+import com.hp.hpl.jena.shared.Lock;
 
 import com.objectsecurity.xwiki.util.DocumentUtil;
 import com.objectsecurity.xwiki.util.SymbolMapper;
@@ -228,7 +229,14 @@ public class Context implements EventListener {
 
     synchronized public void commit() {
         //    	if (this.getModel().supportsTransactions()) {
-        this.getModel().commit();
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.WRITE);
+        try {
+            m.commit();
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
         //    	}
     }
 
@@ -236,128 +244,140 @@ public class Context implements EventListener {
     	this.getModel().abort();
     }
 
-    synchronized public String query(String str) {
+    public String query(String str) {
     	// getModel is also initializer of model_ variable!
     	String outstr = "";
     	Model m = this.getModel();
-        Query query = QueryFactory.create(str) ;
-        QueryExecution qexec = QueryExecutionFactory.create(query, m) ;
-    	try {
-            ResultSet results = qexec.execSelect() ;
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            ResultSetFormatter.out(out, results, query);
-            outstr = out.toString();
-            //    		//    		    fmt.printAll(System.out) ;
-    	} finally {
-            qexec.close() ;
-    	}
+        m.enterCriticalSection(Lock.READ);
+        try {
+            Query query = QueryFactory.create(str) ;
+            QueryExecution qexec = QueryExecutionFactory.create(query, m) ;
+            try {
+                ResultSet results = qexec.execSelect() ;
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                ResultSetFormatter.out(out, results, query);
+                outstr = out.toString();
+                //    		//    		    fmt.printAll(System.out) ;
+            } finally {
+                qexec.close() ;
+            }
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
         return outstr;
     }
 
-    synchronized public Vector<Vector<PairNameLink>> query(String str, String[] header, String[] linksAttrs, String[] linksValuesRemapping) {
+    public Vector<Vector<PairNameLink>> query(String str, String[] header, String[] linksAttrs, String[] linksValuesRemapping) {
     	Vector<Vector<PairNameLink>> retval = new Vector<Vector<PairNameLink>>();
     	Model m = this.getModel();
-        Query query = QueryFactory.create(str) ;
-        QueryExecution qexec = QueryExecutionFactory.create(query, m);
-        HashMap<String, String> name_link_map = new HashMap<String, String>();
-        HashMap<String, String> link_value_remap = new HashMap<String, String>();
-        logger.debug("header len: " + header.length);
-        logger.debug("linksAttrs len: " + linksAttrs.length);
-        for (int i = 0; i<linksAttrs.length; i++) {
-            String tmp = linksAttrs[i];
-            String link = tmp.substring(0, tmp.indexOf(">"));
-            String name = tmp.substring(tmp.indexOf(">") + 1, tmp.length());
-            logger.debug("link: " + link);
-            logger.debug("name: " + name);
-            name_link_map.put(name, link);
-        }
-        for (int i = 0; i<linksValuesRemapping.length; i++) {
-            String tmp = linksValuesRemapping[i];
-            String res = tmp.substring(0, tmp.indexOf(">"));
-            String link = tmp.substring(tmp.indexOf(">") + 1, tmp.length());
-            logger.debug("resource: " + res);
-            logger.debug("link: " + link);
-            link_value_remap.put(res, link);
-        }
-        String[] variable_names;
-    	try {
-            ResultSet results = qexec.execSelect() ;
-            logger.debug("result set hasNext?: " + results.hasNext());
-            for ( ; results.hasNext(); ) {
-                QuerySolution sol = results.next();
-                System.out.println(sol);
-                if (header.length != 0) {
-                    variable_names = header;
-                }
-                else {
-                    System.out.println("header.length == 0 -> generating variable names...");
-                    Iterator<String> names = sol.varNames();
-                    Vector<String> vec = new Vector<String>();
-                    while (names.hasNext()) {
-                        vec.add(names.next());
+        m.enterCriticalSection(Lock.READ);
+        try {
+            Query query = QueryFactory.create(str) ;
+            QueryExecution qexec = QueryExecutionFactory.create(query, m);
+            HashMap<String, String> name_link_map = new HashMap<String, String>();
+            HashMap<String, String> link_value_remap = new HashMap<String, String>();
+            logger.debug("header len: " + header.length);
+            logger.debug("linksAttrs len: " + linksAttrs.length);
+            for (int i = 0; i<linksAttrs.length; i++) {
+                String tmp = linksAttrs[i];
+                String link = tmp.substring(0, tmp.indexOf(">"));
+                String name = tmp.substring(tmp.indexOf(">") + 1, tmp.length());
+                logger.debug("link: " + link);
+                logger.debug("name: " + name);
+                name_link_map.put(name, link);
+            }
+            for (int i = 0; i<linksValuesRemapping.length; i++) {
+                String tmp = linksValuesRemapping[i];
+                String res = tmp.substring(0, tmp.indexOf(">"));
+                String link = tmp.substring(tmp.indexOf(">") + 1, tmp.length());
+                logger.debug("resource: " + res);
+                logger.debug("link: " + link);
+                link_value_remap.put(res, link);
+            }
+            String[] variable_names;
+            try {
+                ResultSet results = qexec.execSelect() ;
+                logger.debug("result set hasNext?: " + results.hasNext());
+                for ( ; results.hasNext(); ) {
+                    QuerySolution sol = results.next();
+                    System.out.println(sol);
+                    if (header.length != 0) {
+                        variable_names = header;
                     }
-                    variable_names = vec.toArray(new String[0]);
-                }
-                Vector<PairNameLink> row = new Vector<PairNameLink>();
-                for (int i = 0; i < variable_names.length; i++) {
-                    if (sol.contains(variable_names[i])) {
-                        RDFNode x = sol.get(variable_names[i]);
-                        String field = name_link_map.get(variable_names[i]);
-                        PairNameLink pair = new PairNameLink();
-                        RDFNode r = null;
-                        if (field != null && !field.equals("")) {
-                            r = sol.get(field);
+                    else {
+                        System.out.println("header.length == 0 -> generating variable names...");
+                        Iterator<String> names = sol.varNames();
+                        Vector<String> vec = new Vector<String>();
+                        while (names.hasNext()) {
+                            vec.add(names.next());
                         }
-                        if (x.isLiteral()) {
-                            pair.name = x.asLiteral().toString();
-                        }
-                        else if (x.isResource()) {
-                            pair.name = x.asResource().toString();
-                        }
-                        else {
-                            pair.name = "<not literal type>";
-                        }
-                        logger.debug("pair.name: " + pair.name);
-                        logger.debug("r: " + r);
-                        if (r != null) {
-                            if (r.isLiteral()) {
-                                pair.link = r.asLiteral().toString();
+                        variable_names = vec.toArray(new String[0]);
+                    }
+                    Vector<PairNameLink> row = new Vector<PairNameLink>();
+                    for (int i = 0; i < variable_names.length; i++) {
+                        if (sol.contains(variable_names[i])) {
+                            RDFNode x = sol.get(variable_names[i]);
+                            String field = name_link_map.get(variable_names[i]);
+                            PairNameLink pair = new PairNameLink();
+                            RDFNode r = null;
+                            if (field != null && !field.equals("")) {
+                                r = sol.get(field);
                             }
-                            else if (r.isResource()) {
-                                pair.link = r.asResource().toString();
+                            if (x.isLiteral()) {
+                                pair.name = x.asLiteral().toString();
+                            }
+                            else if (x.isResource()) {
+                                pair.name = x.asResource().toString();
                             }
                             else {
-                                pair.link = "<not literal type>";
+                                pair.name = "<not literal type>";
                             }
-                            logger.debug("pair.link: " + pair.link);
-                            // need to process link if linksValuesRemapping is used
-                            logger.debug("empty remap?: " + link_value_remap.isEmpty());
-                            if (!link_value_remap.isEmpty()) {
-                                Set<String> keys = link_value_remap.keySet();
-                                logger.debug("keys: " + keys.toString());
-                                for (Iterator<String> it = keys.iterator(); it.hasNext(); ) {
-                                    String key = it.next();
-                                    logger.debug("key: " + key);
-                                    logger.debug("link: " + pair.link);
-                                    if (pair.link.contains(key)) {
-                                        // link contains the resource URL which needs to be re-mapped
-                                        String tmp = pair.link.replace(key, link_value_remap.get(key));
-                                        logger.debug("remapping link : " + pair.link + " to " + tmp);
-                                        pair.link = tmp;
+                            logger.debug("pair.name: " + pair.name);
+                            logger.debug("r: " + r);
+                            if (r != null) {
+                                if (r.isLiteral()) {
+                                    pair.link = r.asLiteral().toString();
+                                }
+                                else if (r.isResource()) {
+                                    pair.link = r.asResource().toString();
+                                }
+                                else {
+                                    pair.link = "<not literal type>";
+                                }
+                                logger.debug("pair.link: " + pair.link);
+                                // need to process link if linksValuesRemapping is used
+                                logger.debug("empty remap?: " + link_value_remap.isEmpty());
+                                if (!link_value_remap.isEmpty()) {
+                                    Set<String> keys = link_value_remap.keySet();
+                                    logger.debug("keys: " + keys.toString());
+                                    for (Iterator<String> it = keys.iterator(); it.hasNext(); ) {
+                                        String key = it.next();
+                                        logger.debug("key: " + key);
+                                        logger.debug("link: " + pair.link);
+                                        if (pair.link.contains(key)) {
+                                            // link contains the resource URL which needs to be re-mapped
+                                            String tmp = pair.link.replace(key, link_value_remap.get(key));
+                                            logger.debug("remapping link : " + pair.link + " to " + tmp);
+                                            pair.link = tmp;
+                                        }
                                     }
                                 }
                             }
+                            row.add(pair);
                         }
-                        row.add(pair);
                     }
+                    retval.add(row);
                 }
-                retval.add(row);
-            }
-    	} finally { qexec.close() ; }
+            } finally { qexec.close() ; }
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
     	return retval;    	
     }
 
-    synchronized public Vector<Vector<String>> query(String str, String[] header) {
+    public Vector<Vector<String>> query(String str, String[] header) {
     	Vector<Vector<String>> retval = new Vector<Vector<String>>();
     	Vector<Vector<PairNameLink>> tmp = query(str, header, new String[0], new String[0]);
         Iterator<Vector<PairNameLink>> i = tmp.iterator();
@@ -374,7 +394,7 @@ public class Context implements EventListener {
     	return retval;
     }
     
-    synchronized public String query(String str, String[] header, boolean literalsAsLinks) {
+    public String query(String str, String[] header, boolean literalsAsLinks) {
     	// getModel is also initializer of model_ variable!
     	String retval = "";
     	for (int i = 0; i<header.length; i++) {
@@ -385,39 +405,45 @@ public class Context implements EventListener {
             retval = retval + "|";
     	}
     	retval = retval + "\n";
-    	Model m = this.getModel();
-        Query query = QueryFactory.create(str) ;
-        QueryExecution qexec = QueryExecutionFactory.create(query, m) ;
-    	try {
-            ResultSet results = qexec.execSelect() ;
-            //    		ByteArrayOutputStream out = new ByteArrayOutputStream();
-            //    		ResultSetFormatter.out(out, results, query);
-            //    		String outstr = out.toString();
-            //    		return outstr;
-            //    		//    		    fmt.printAll(System.out) ;
-            for ( ; results.hasNext(); ) {
-                QuerySolution sol = results.next();
-                System.out.println(sol);
-                for (int i = 0; i < header.length; i++) {
-                    if (i == 0)
-                        retval = retval + "|";
-                    if (sol.contains(header[i])) {
-                        RDFNode x = sol.get(header[i]);
-                        if (x.isLiteral()) {
-                            if (literalsAsLinks)
-                                retval = retval + "[[";
-                            String lit = x.asLiteral().toString();
-                            retval = retval + lit.replace(".", "\\.");
-                            if (literalsAsLinks)
-                                retval = retval + "]]";
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.READ);
+        try {
+            Query query = QueryFactory.create(str) ;
+            QueryExecution qexec = QueryExecutionFactory.create(query, m) ;
+            try {
+                ResultSet results = qexec.execSelect() ;
+                //    		ByteArrayOutputStream out = new ByteArrayOutputStream();
+                //    		ResultSetFormatter.out(out, results, query);
+                //    		String outstr = out.toString();
+                //    		return outstr;
+                //    		//    		    fmt.printAll(System.out) ;
+                for ( ; results.hasNext(); ) {
+                    QuerySolution sol = results.next();
+                    System.out.println(sol);
+                    for (int i = 0; i < header.length; i++) {
+                        if (i == 0)
+                            retval = retval + "|";
+                        if (sol.contains(header[i])) {
+                            RDFNode x = sol.get(header[i]);
+                            if (x.isLiteral()) {
+                                if (literalsAsLinks)
+                                    retval = retval + "[[";
+                                String lit = x.asLiteral().toString();
+                                retval = retval + lit.replace(".", "\\.");
+                                if (literalsAsLinks)
+                                    retval = retval + "]]";
+                            }
                         }
+                        //if (i < header.length - 1)
+                        retval = retval + "|";
                     }
-                    //if (i < header.length - 1)
-                    retval = retval + "|";
+                    retval = retval + "\n";
                 }
-                retval = retval + "\n";
-            }
-    	} finally { qexec.close() ; }
+            } finally { qexec.close() ; }
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
     	return retval;
     }
 
@@ -436,100 +462,156 @@ public class Context implements EventListener {
         return this.query(str, vec.toArray(new String[0]), links);
     }
 
-    synchronized public String getPropertyTableForResource(String res, String literalsAsLinks) {
+    public String getPropertyTableForResource(String res, String literalsAsLinks) {
     	String tres = SymbolMapper.transform(res, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
     	String retval = "";
-        StmtIterator iter = this.getModel().listStatements(new SimpleSelector(this.getModel().createResource(tres), null, (RDFNode)null) {
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.READ);
+        try {
+            StmtIterator iter = m.listStatements(new SimpleSelector(m.createResource(tres), null, (RDFNode)null) {
                 public boolean selects(Statement s) {
                     return true;
                 }
             });
-        if (iter.hasNext()) {
-            retval = "|property|value|\n";
+            if (iter.hasNext()) {
+                retval = "|property|value|\n";
+            }
+            boolean links = false;
+            if ("true".equals(literalsAsLinks))
+                links = true;
+            while (iter.hasNext()) {
+                Statement stmt = iter.next();
+                retval = retval + "|"
+                    + stmt.getPredicate().toString()
+                    + "|"
+                    + (links ? "[[" : "")
+                    + (links ? /* stmt.getLiteral().toString().replace(".", "\\.") */ SymbolMapper.transform(stmt.getLiteral().toString(), SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION) : stmt.getLiteral().toString()) 
+                    + (links ? "]]" : "")
+                    + "|\n";
+            }
         }
-        boolean links = false;
-        if ("true".equals(literalsAsLinks))
-            links = true;
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            retval = retval + "|"
-                + stmt.getPredicate().toString()
-                + "|"
-                + (links ? "[[" : "")
-                + (links ? /* stmt.getLiteral().toString().replace(".", "\\.") */ SymbolMapper.transform(stmt.getLiteral().toString(), SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION) : stmt.getLiteral().toString()) 
-                + (links ? "]]" : "")
-                + "|\n";
+        finally {
+            m.leaveCriticalSection();
         }
         return retval;
     }
 
-    synchronized public Vector<Vector<String>> getPropertyTableForResource(String res) {
+    public Vector<Vector<String>> getPropertyTableForResource(String res) {
         logger.debug("Context: table for resource: " + res);
     	String tres = SymbolMapper.transform(res, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         logger.debug("Context: resource translated to: " + tres);
     	Vector<Vector<String>> retval = new Vector<Vector<String>>();
-        StmtIterator iter = this.getModel().listStatements(new SimpleSelector(this.getModel().createResource(tres), null, (RDFNode)null) {
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.READ);
+        try {
+            StmtIterator iter = m.listStatements(new SimpleSelector(m.createResource(tres), null, (RDFNode)null) {
                 public boolean selects(Statement s) {
                     return true;
                 }
             });
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            Vector<String> row = new Vector<String>();
-            row.add(stmt.getPredicate().toString());
-            //row.add(stmt.getPredicate().getLocalName());
-            row.add(stmt.getLiteral().toString());
-            logger.debug("adding row: " + row.toString());
-            retval.add(row);
+            while (iter.hasNext()) {
+                Statement stmt = iter.next();
+                Vector<String> row = new Vector<String>();
+                row.add(stmt.getPredicate().toString());
+                //row.add(stmt.getPredicate().getLocalName());
+                row.add(stmt.getLiteral().toString());
+                logger.debug("adding row: " + row.toString());
+                retval.add(row);
+            }
+        }
+        finally {
+            m.leaveCriticalSection();
         }
         return retval;
     }
 
-    synchronized public void setProperty(String resource, String property_prefix, String property_name, String property_value, Mode mode) {
+    public void setProperty(String resource, String property_prefix, String property_name, String property_value, Mode mode) {
     	// createProperty reuses existing property
-    	Property property = this.getModel().createProperty(property_prefix, property_name);
-    	this.setProperty(resource, property, property_value, mode);
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.WRITE);
+        try {
+            Property property = m.createProperty(property_prefix, property_name);
+            this.setProperty(resource, property, property_value, mode);
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
     }
 
-    synchronized public void setProperty(String resource, Property property, String property_value, Mode mode) {
+    public void setProperty(String resource, Property property, String property_value, Mode mode) {
         logger.debug("Context: set property on resource: " + resource);
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         logger.debug("Context: resource translated to: " + tres);
-    	Resource res = this.getModel().getResource(tres);
-    	if (res == null)
-            res = this.getModel().createResource();
-    	if (mode == Mode.MODIFY) {
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.WRITE);
+        try {
+            Resource res = m.getResource(tres);
+            if (res == null)
+                res = m.createResource();
+            if (mode == Mode.MODIFY) {
+                this.removeProperty(resource, property);
+            }
+            res.addProperty(property, property_value);
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
+    }
+    
+    public void removeProperty(String resource, String property_prefix, String property_name) {
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.WRITE);
+        try {
+            Property property = m.createProperty(property_prefix, property_name);
             this.removeProperty(resource, property);
-    	}
-    	res.addProperty(property, property_value);
-    }
-    
-    synchronized public void removeProperty(String resource, String property_prefix, String property_name) {
-    	Property property = this.getModel().createProperty(property_prefix, property_name);
-    	this.removeProperty(resource, property);
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
     }
 
-    synchronized public void removeProperty(String resource, Property property) {
+    public void removeProperty(String resource, Property property) {
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
-    	Resource res = this.getModel().getResource(tres);
-    	if (res == null)
-            res = this.getModel().createResource(resource);
-        logger.debug("removeAll properties: `" + property.toString() + "' on resource: `" + res.toString() + "'");
-    	res.removeAll(property);
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.WRITE);
+        try {
+            Resource res = m.getResource(tres);
+            if (res == null)
+                res = m.createResource(resource);
+            logger.debug("removeAll properties: `" + property.toString() + "' on resource: `" + res.toString() + "'");
+            res.removeAll(property);
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
     }
     
-    synchronized public String getProperty(String resource, String property_prefix, String property_name) {
-    	Property property = this.getModel().createProperty(property_prefix, property_name);
-    	return this.getProperty(resource, property);
+    public String getProperty(String resource, String property_prefix, String property_name) {
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.READ);
+        try {
+            Property property = m.createProperty(property_prefix, property_name);
+            return this.getProperty(resource, property);
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
     }
 
-    synchronized public String getProperty(String resource, Property property) {
+    public String getProperty(String resource, Property property) {
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
-    	Resource res = this.getModel().getResource(tres);
-    	if (res == null)
-            res = this.getModel().createResource(resource);
-    	Statement p = res.getProperty(property);
-    	return p != null ? p.getString() : null;
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.READ);
+        try {
+            Resource res = m.getResource(tres);
+            if (res == null)
+                res = m.createResource(resource);
+            Statement p = res.getProperty(property);
+            return p != null ? p.getString() : null;
+        }
+        finally {
+            m.leaveCriticalSection();
+        }
     }
 
     @Override
@@ -553,16 +635,24 @@ public class Context implements EventListener {
         String name = DocumentUtil.computeFullDocName(doc.getDocumentReference());
         String tres = SymbolMapper.transform(name, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         logger.debug("tres: " + tres);
-    	Resource res = this.getModel().getResource(tres);
-    	res.removeProperties();
-        if (logger.isDebugEnabled()) {
-            logger.debug("props after delete: " + this.query("SELECT ?prop WHERE { <" + tres + "> ?prop ?prop_value }", new String[] {"prop"}, false));
-            StmtIterator it = res.listProperties();
-            while (it.hasNext()) {
-                Statement st = it.next();
-                logger.debug("prop: " + st);
+        Model m = this.getModel();
+        m.enterCriticalSection(Lock.WRITE);
+        try {
+            Resource res = m.getResource(tres);
+            res.removeProperties();
+            if (logger.isDebugEnabled()) {
+                logger.debug("props after delete: " + this.query("SELECT ?prop WHERE { <" + tres + "> ?prop ?prop_value }", new String[] {"prop"}, false));
+                StmtIterator it = res.listProperties();
+                while (it.hasNext()) {
+                    Statement st = it.next();
+                    logger.debug("prop: " + st);
+                }
             }
         }
+        finally {
+            m.leaveCriticalSection();
+        }
+
         //		//Query query = QueryFactory.create("SELECT ?prop WHERE { ?ref <http://www.objectsecurity.com/NextGenRE/XWikiPage_properties_for_deletion> ?prop }") ;
         //		Query query = QueryFactory.create("SELECT ?prop WHERE { <" + res + "> ?prop ?prop_value }");
         //		QueryExecution qexec = QueryExecutionFactory.create(query, this.getModel()) ;
