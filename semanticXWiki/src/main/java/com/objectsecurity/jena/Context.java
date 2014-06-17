@@ -94,7 +94,8 @@ public class Context implements EventListener {
         TDB_DIRECTORY,
         TDB_ASSEMBLER,
         VIRTUOSO,
-        IN_MEMORY
+        IN_MEMORY,
+        STARDOG
     }
 	
     private static Context INSTANCE = null;
@@ -117,6 +118,8 @@ public class Context implements EventListener {
     private static final String DIRECTORY = "directory";
     private static final String VIRTUOSO = "virtuoso";
     private static final String VIRTUOSO_URL = "jdbc:virtuoso://localhost:1111";
+    private static final String STARDOG = "stardog";
+    private static final String STARDOG_URL = "snarl://localhost:5820";
 
     private BackendImpl jena_backend = BackendImpl.UNKNOWN;
     private String jena_backend_db = "";
@@ -186,6 +189,10 @@ public class Context implements EventListener {
             else if (backend_name.equals(VIRTUOSO)) {
                 jena_backend = BackendImpl.VIRTUOSO;
                 jena_backend_db = VIRTUOSO_URL;
+            }
+            else if (backend_name.equals(STARDOG)) {
+                jena_backend = BackendImpl.STARDOG;
+                jena_backend_db = backend_db_name;
             }
             else {
                 logger.info("UNKNOWN backend! => will use default option...");
@@ -261,6 +268,46 @@ public class Context implements EventListener {
                         }
                         catch (Exception ex) {
                             logger.error("Can't resolve and invoke virtuoso's VirtModel class: " + ex);
+                        }
+                    }
+                    else if (jena_backend == BackendImpl.STARDOG) {
+                        // we need to invoke:
+                        // Connection conn = com.complexible.stardog.api.ConnectionConfiguration
+                        // .from("<URL").credentials("admin",
+                        // "admin").connect()
+                        // SDJenaAdapter.createModel(conn);
+                        // here using reflection
+                        // from invocation
+                        try {
+                            Class c = Class.forName("com.complexible.stardog.api.ConnectionConfiguration");
+                            Class[] from_params = new Class[1];
+                            from_params[0] = String.class;
+                            Method from = c.getDeclaredMethod("from", from_params);
+                            String url = STARDOG_URL;
+                            url = url + "/" + jena_backend_db;
+                            System.err.println("Stardog url: " + url);
+                            Object connConf = from.invoke(null, url);
+                            // credentials invocation
+                            Class[] creds_params = new Class[2];
+                            creds_params[0] = String.class;
+                            creds_params[1] = String.class;
+                            Method credentials = c.getDeclaredMethod("credentials", creds_params);
+                            connConf = credentials.invoke(connConf, "admin", "admin");
+                            // connect invocation
+                            Class[] connect_params = new Class[0];
+                            Method connect = c.getDeclaredMethod("connect", connect_params);
+                            Object conn = connect.invoke(connConf);
+                            // createModel invocation
+                            c = Class.forName("com.complexible.stardog.jena.SDJenaFactory");
+                            Class[] create_model_params = new Class[1];
+                            create_model_params[0] = Class.forName("com.complexible.stardog.api.Connection");
+                            Method create_model = c.getDeclaredMethod("createModel", create_model_params);
+                            model_ = (Model)create_model.invoke(null, conn);
+                            model_supports_txs_ = true;
+                        }
+                        catch (Exception ex) {
+                            logger.error("Can't resolve and invoke StarDog's class: " + ex);
+                            ex.printStackTrace();
                         }
                     }
                     else {
