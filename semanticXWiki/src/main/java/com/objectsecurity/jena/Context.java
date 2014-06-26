@@ -270,7 +270,7 @@ public class Context implements EventListener {
                                 prms[i] = String.class;
                             }
                             Method m = c.getDeclaredMethod("openDefaultModel", prms);
-                            model_ = (Model)m.invoke(null, VIRTUOSO_URL, "dba", "dba");
+                            model_ = (Model)m.invoke(null, jena_backend_db, "dba", "dba");
                             model_supports_txs_ = true;
                         }
                         catch (Exception ex) {
