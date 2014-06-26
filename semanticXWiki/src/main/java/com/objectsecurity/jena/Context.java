@@ -117,7 +117,9 @@ public class Context implements EventListener {
     private static final String ASSEMBLER = "assembler";
     private static final String DIRECTORY = "directory";
     private static final String VIRTUOSO = "virtuoso";
-    private static final String VIRTUOSO_URL = "jdbc:virtuoso://localhost:1111";
+    private static final String VIRTUOSO_URL_LOCALHOST = "jdbc:virtuoso://localhost:1111";
+    private static final String VIRTUOSO_URI = "jdbc:virtuoso://";
+    private static final String VIRTUOSO_PORT = ":1111";
     private static final String STARDOG = "stardog";
     private static final String STARDOG_URL = "snarl://localhost:5820";
 
@@ -188,7 +190,12 @@ public class Context implements EventListener {
             }
             else if (backend_name.equals(VIRTUOSO)) {
                 jena_backend = BackendImpl.VIRTUOSO;
-                jena_backend_db = VIRTUOSO_URL;
+                if (backend_db_name.equals("")) {
+                    jena_backend_db = VIRTUOSO_URL_LOCALHOST;
+                }
+                else {
+                    jena_backend_db = VIRTUOSO_URI + backend_db_name + VIRTUOSO_PORT;
+                }
             }
             else if (backend_name.equals(STARDOG)) {
                 jena_backend = BackendImpl.STARDOG;
@@ -268,6 +275,7 @@ public class Context implements EventListener {
                         }
                         catch (Exception ex) {
                             logger.error("Can't resolve and invoke virtuoso's VirtModel class: " + ex);
+                            ex.printStackTrace();
                         }
                     }
                     else if (jena_backend == BackendImpl.STARDOG) {
