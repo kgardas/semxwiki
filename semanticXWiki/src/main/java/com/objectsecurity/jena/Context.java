@@ -114,7 +114,9 @@ public class Context implements EventListener {
     private static final String ASSEMBLER = "assembler";
     private static final String DIRECTORY = "directory";
     private static final String VIRTUOSO = "virtuoso";
-    private static final String VIRTUOSO_URL = "jdbc:virtuoso://localhost:1111";
+    private static final String VIRTUOSO_URL_LOCALHOST = "jdbc:virtuoso://localhost:1111";
+    private static final String VIRTUOSO_URI = "jdbc:virtuoso://";
+    private static final String VIRTUOSO_PORT = ":1111";
 
     private BackendImpl jena_backend = BackendImpl.UNKNOWN;
     private String jena_backend_db = "";
@@ -181,7 +183,12 @@ public class Context implements EventListener {
             }
             else if (backend_name.equals(VIRTUOSO)) {
                 jena_backend = BackendImpl.VIRTUOSO;
-                jena_backend_db = VIRTUOSO_URL;
+                if (backend_db_name.equals("")) {
+                    jena_backend_db = VIRTUOSO_URL_LOCALHOST;
+                }
+                else {
+                    jena_backend_db = VIRTUOSO_URI + backend_db_name + VIRTUOSO_PORT;
+                }
             }
             else {
                 logger.info("UNKNOWN backend! => will use default option...");
@@ -232,10 +239,11 @@ public class Context implements EventListener {
                                 prms[i] = String.class;
                             }
                             Method m = c.getDeclaredMethod("openDefaultModel", prms);
-                            model_ = (Model)m.invoke(null, VIRTUOSO_URL, "dba", "dba");
+                            model_ = (Model)m.invoke(null, jena_backend_db, "dba", "dba");
                         }
                         catch (Exception ex) {
                             logger.error("Can't resolve and invoke virtuoso's VirtModel class: " + ex);
+                            ex.printStackTrace();
                         }
                     }
                     else {
