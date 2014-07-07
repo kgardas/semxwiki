@@ -324,6 +324,12 @@ public class Context implements EventListener {
                     //Model m = SDBFactory.connectDefaultModel(store);
                     //Model m = SDBFactory.connectNamedModel(store, iri);
                     //model_ = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, m);
+                    if (model_supports_txs_) {
+                        logger.info("BACKEND TXS: YES");
+                    }
+                    else {
+                        logger.info("BACKEND TXS: NO");
+                    }
                     logger.info("Context: created ontology model: " + model_);
                 }
             }
