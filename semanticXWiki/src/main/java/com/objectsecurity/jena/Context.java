@@ -413,12 +413,12 @@ public class Context implements EventListener {
                 logger.debug("result set hasNext?: " + results.hasNext());
                 for ( ; results.hasNext(); ) {
                     QuerySolution sol = results.next();
-                    System.out.println(sol);
+                    logger.debug(sol.toString());
                     if (header.length != 0) {
                         variable_names = header;
                     }
                     else {
-                        System.out.println("header.length == 0 -> generating variable names...");
+                        logger.debug("header.length == 0 -> generating variable names...");
                         Iterator<String> names = sol.varNames();
                         Vector<String> vec = new Vector<String>();
                         while (names.hasNext()) {
@@ -531,7 +531,7 @@ public class Context implements EventListener {
                 //    		//    		    fmt.printAll(System.out) ;
                 for ( ; results.hasNext(); ) {
                     QuerySolution sol = results.next();
-                    System.out.println(sol);
+                    logger.debug(sol.toString());
                     for (int i = 0; i < header.length; i++) {
                         if (i == 0)
                             retval = retval + "|";
