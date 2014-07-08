@@ -524,7 +524,7 @@ public class Context implements EventListener {
         }
     }
 
-    public void setProperty(String resource, Property property, String property_value, Mode mode) {
+    private void setProperty(String resource, Property property, String property_value, Mode mode) {
         logger.debug("Context: set property on resource: " + resource);
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         logger.debug("Context: resource translated to: " + tres);
@@ -556,7 +556,7 @@ public class Context implements EventListener {
         }
     }
 
-    public void removeProperty(String resource, Property property) {
+    private void removeProperty(String resource, Property property) {
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         Model m = this.getModel();
         m.enterCriticalSection(Lock.WRITE);
@@ -584,7 +584,7 @@ public class Context implements EventListener {
         }
     }
 
-    public String getProperty(String resource, Property property) {
+    private String getProperty(String resource, Property property) {
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         Model m = this.getModel();
         m.enterCriticalSection(Lock.READ);
