@@ -356,30 +356,6 @@ public class Context implements EventListener {
         }
     }
 
-    public String query(String str) {
-    	// getModel is also initializer of model_ variable!
-    	String outstr = "";
-    	Model m = this.getModel();
-        m.enterCriticalSection(Lock.READ);
-        try {
-            Query query = QueryFactory.create(str) ;
-            QueryExecution qexec = QueryExecutionFactory.create(query, m) ;
-            try {
-                ResultSet results = qexec.execSelect() ;
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                ResultSetFormatter.out(out, results, query);
-                outstr = out.toString();
-                //    		//    		    fmt.printAll(System.out) ;
-            } finally {
-                qexec.close() ;
-            }
-        }
-        finally {
-            m.leaveCriticalSection();
-        }
-        return outstr;
-    }
-
     public Vector<Vector<PairNameLink>> query(String str, String[] header, String[] linksAttrs, String[] linksValuesRemapping) {
     	Vector<Vector<PairNameLink>> retval = new Vector<Vector<PairNameLink>>();
     	Model m = this.getModel();
@@ -504,108 +480,6 @@ public class Context implements EventListener {
         }
 
     	return retval;
-    }
-    
-    public String query(String str, String[] header, boolean literalsAsLinks) {
-    	// getModel is also initializer of model_ variable!
-    	String retval = "";
-    	for (int i = 0; i<header.length; i++) {
-            if (i == 0)
-                retval = retval + "|";
-            retval = retval + header[i];
-            //if (i < header.length - 1)
-            retval = retval + "|";
-    	}
-    	retval = retval + "\n";
-        Model m = this.getModel();
-        m.enterCriticalSection(Lock.READ);
-        try {
-            Query query = QueryFactory.create(str) ;
-            QueryExecution qexec = QueryExecutionFactory.create(query, m) ;
-            try {
-                ResultSet results = qexec.execSelect() ;
-                //    		ByteArrayOutputStream out = new ByteArrayOutputStream();
-                //    		ResultSetFormatter.out(out, results, query);
-                //    		String outstr = out.toString();
-                //    		return outstr;
-                //    		//    		    fmt.printAll(System.out) ;
-                for ( ; results.hasNext(); ) {
-                    QuerySolution sol = results.next();
-                    logger.debug(sol.toString());
-                    for (int i = 0; i < header.length; i++) {
-                        if (i == 0)
-                            retval = retval + "|";
-                        if (sol.contains(header[i])) {
-                            RDFNode x = sol.get(header[i]);
-                            if (x.isLiteral()) {
-                                if (literalsAsLinks)
-                                    retval = retval + "[[";
-                                String lit = x.asLiteral().toString();
-                                retval = retval + lit.replace(".", "\\.");
-                                if (literalsAsLinks)
-                                    retval = retval + "]]";
-                            }
-                        }
-                        //if (i < header.length - 1)
-                        retval = retval + "|";
-                    }
-                    retval = retval + "\n";
-                }
-            } finally { qexec.close() ; }
-        }
-        finally {
-            m.leaveCriticalSection();
-        }
-    	return retval;
-    }
-
-    public String query(String str, String header, String literalsAsLinks) {
-    	if (header == null || header.equals(""))
-            return this.query(str);
-    	StringTokenizer st = new StringTokenizer(header, ",");
-    	Vector<String >vec = new Vector<String>();
-    	while(st.hasMoreElements()) {
-            vec.add(st.nextToken());
-    	}
-    	boolean links = false;
-    	if ("true".equals(literalsAsLinks)) {
-            links = true;
-    	}
-        return this.query(str, vec.toArray(new String[0]), links);
-    }
-
-    public String getPropertyTableForResource(String res, String literalsAsLinks) {
-    	String tres = SymbolMapper.transform(res, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
-    	String retval = "";
-        Model m = this.getModel();
-        m.enterCriticalSection(Lock.READ);
-        try {
-            StmtIterator iter = m.listStatements(new SimpleSelector(m.createResource(tres), null, (RDFNode)null) {
-                public boolean selects(Statement s) {
-                    return true;
-                }
-            });
-            if (iter.hasNext()) {
-                retval = "|property|value|\n";
-            }
-            boolean links = false;
-            if ("true".equals(literalsAsLinks))
-                links = true;
-            while (iter.hasNext()) {
-                Statement stmt = iter.next();
-                retval = retval + "|"
-                    + stmt.getPredicate().toString()
-                    + "|"
-                    + (links ? "[[" : "")
-                    + (links ? /* stmt.getLiteral().toString().replace(".", "\\.") */ SymbolMapper.transform(stmt.getLiteral().toString(), SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION) : stmt.getLiteral().toString()) 
-                    + (links ? "]]" : "")
-                    + "|\n";
-            }
-        }
-        finally {
-            m.leaveCriticalSection();
-        }
-        return retval;
     }
 
     public Vector<Vector<String>> getPropertyTableForResource(String res) {
@@ -764,39 +638,6 @@ public class Context implements EventListener {
         finally {
             m.leaveCriticalSection();
         }
-
-        //		//Query query = QueryFactory.create("SELECT ?prop WHERE { ?ref <http://www.objectsecurity.com/NextGenRE/XWikiPage_properties_for_deletion> ?prop }") ;
-        //		Query query = QueryFactory.create("SELECT ?prop WHERE { <" + res + "> ?prop ?prop_value }");
-        //		QueryExecution qexec = QueryExecutionFactory.create(query, this.getModel()) ;
-        //		String[] header = new String[] {"prop" };
-        //		this.begin();
-        //    	try {
-        //    		ResultSet results = qexec.execSelect() ;
-        //    		for ( ; results.hasNext(); ) {
-        //    			QuerySolution sol = results.next();
-        //    			System.out.println(sol);
-        //    			for (int i = 0; i < header.length; i++) {
-        //    				if (sol.contains(header[i])) {
-        //    					RDFNode x = sol.get(header[i]);
-        //    					if (x.isLiteral()) {
-        //    						String lit = x.asLiteral().toString();
-        //    						System.err.println("deleting property: " + lit);
-        //    						if (lit != null && !lit.equals("")) {
-        //    							int pos = lit.lastIndexOf('/');
-        //    							String prefix = lit.substring(0, pos + 1);
-        //    							String name = lit.substring(pos + 1);
-        //    							System.err.println("property prefix `" + prefix + "'");
-        //    							System.err.println("property name `" + name + "'");
-        //    							this.removeProperty(res, prefix, name);
-        //    						}
-        //    					}
-        //    				}
-        //    			}
-        //    		}
-        //    	} finally { qexec.close() ; }
-        //    	this.removeProperty(res, "http://www.objectsecurity.com/NextGenRE/", "XWikiPage_properties_for_deletion");
-        //    	this.commit();
-        //    	System.err.println("props after delete: " + this.query("SELECT ?prop WHERE { ?ref ?prop_name ?prop }", new String[] {"prop"}, false));
     }
 	
     private ObservationManager getObservationManager() {

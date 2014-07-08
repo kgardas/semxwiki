@@ -29,6 +29,8 @@ import com.hp.hpl.jena.vocabulary.DC;
 import com.hp.hpl.jena.vocabulary.VCARD;
 import com.objectsecurity.jena.Context.Mode;
 
+import java.util.Vector;
+
 public class BookStoreTest {
 
 	static String pUri = "http://www.boookstore.net/authors/JRRTolkien";
@@ -70,12 +72,12 @@ public class BookStoreTest {
 		pap.addProperty(BookStore.WRITTEN_BY, austen);
 		austen.addProperty(BookStore.WROTE, pap);
 		*/
-		ctx.setProperty(pUri, VCARD.FN, fullName, Mode.MODIFY);
+		ctx.setProperty(pUri, VCARD.FN.getNameSpace(), VCARD.FN.getLocalName(), fullName, Mode.MODIFY);
 		ctx.setProperty(pUri, "http://www.objectsecurity.com/bookStore#", "AUTHOR", "true", Mode.MODIFY);
 		
-		ctx.setProperty(bUri+"TheHobbit", DC.title, "The Hobbit", Mode.MODIFY);
+		ctx.setProperty(bUri+"TheHobbit", DC.title.getNameSpace(), DC.title.getLocalName(), "The Hobbit", Mode.MODIFY);
 		ctx.setProperty(bUri+"TheHobbit", "http://www.objectsecurity.com/bookStore#", "BOOK", "true", Mode.MODIFY);
-		ctx.setProperty(bUri+"TheHobbit", DC.creator, "J.R.R.Tolkien", Mode.MODIFY);
+		ctx.setProperty(bUri+"TheHobbit", DC.creator.getNameSpace(), DC.creator.getLocalName(), "J.R.R.Tolkien", Mode.MODIFY);
 		ctx.setProperty(bUri+"TheHobbit", "http://www.objectsecurity.com/bookStore#", "WRITTEN_BY", "J.R.R.Tolkien", Mode.MODIFY);
 		
 		ctx.setProperty(pUri, "http://www.objectsecurity.com/bookStore#", "WROTE", "The Hobbit", Mode.MODIFY);
@@ -104,7 +106,7 @@ WHERE
 		queryString += "?book <http://purl.org/dc/elements/1.1/creator> \"J.R.R.Tolkien\" .";
 		queryString += "FILTER regex(?isBook, \"true\", \"i\") }";
 		
-		String res = ctx.query(queryString, "author,title,isBook", "true");
+		Vector<Vector<String>> res = ctx.query(queryString, new String[] {"author", "title", "isBook"});
 		System.out.println(res);
 		
 		//model.listStatements(model.createResource();
@@ -119,7 +121,7 @@ WHERE
 //			System.out.print(" -> ");
 //			System.out.println(stmt.getLiteral().toString());
 //		}
-		String props = ctx.getPropertyTableForResource(bUri+"TheHobbit", "true");
+		Vector<Vector<String>> props = ctx.getPropertyTableForResource(bUri+"TheHobbit");
 		System.out.println(props);
 	}
 }
