@@ -59,6 +59,7 @@ import com.hp.hpl.jena.query.QueryFactory;
 import com.hp.hpl.jena.query.QuerySolution;
 import com.hp.hpl.jena.query.ResultSet;
 import com.hp.hpl.jena.query.ResultSetFormatter;
+import com.hp.hpl.jena.rdf.model.Literal;
 import com.hp.hpl.jena.rdf.model.Model;
 import com.hp.hpl.jena.rdf.model.ModelFactory;
 import com.hp.hpl.jena.rdf.model.Property;
@@ -72,6 +73,9 @@ import com.hp.hpl.jena.sdb.Store;
 import com.hp.hpl.jena.sdb.store.StoreFactory;
 import com.hp.hpl.jena.tdb.TDBFactory;
 import com.hp.hpl.jena.shared.Lock;
+import com.hp.hpl.jena.update.UpdateFactory;
+import com.hp.hpl.jena.update.UpdateRequest;
+import com.hp.hpl.jena.update.UpdateExecutionFactory;
 
 import com.objectsecurity.xwiki.util.DocumentUtil;
 import com.objectsecurity.xwiki.util.SymbolMapper;
@@ -95,9 +99,22 @@ public class Context implements EventListener {
         TDB_ASSEMBLER,
         VIRTUOSO,
         IN_MEMORY,
-        STARDOG
+        STARDOG,
+        FOUR_STORE
     }
-	
+
+    enum BackendMode {
+        UNKNOWN,
+        JENA_MODEL,
+        REMOTE_SPARQL
+    }
+
+    enum SparqlMode {
+        UNKNOWN,
+        NORMAL,
+        WEBFORM
+    }
+
     private static Context INSTANCE = null;
     private static Object INSTANCE_lock = new Object();
 
@@ -122,9 +139,19 @@ public class Context implements EventListener {
     private static final String VIRTUOSO_PORT = ":1111";
     private static final String STARDOG = "stardog";
     private static final String STARDOG_URL = "snarl://localhost:5820";
+    private static final String FOUR_STORE = "4store";
+    private static final String FOUR_STORE_SPARQL = "/sparql/";
+    private static final String FOUR_STORE_UPDATE = "/update/";
+    private static final SparqlMode FOUR_STORE_MODE = SparqlMode.WEBFORM;
 
     private BackendImpl jena_backend = BackendImpl.UNKNOWN;
     private String jena_backend_db = "";
+
+    private BackendMode mode = BackendMode.UNKNOWN;
+
+    private String remote_update_url = "";
+    private String remote_sparql_url = "";
+    private SparqlMode sparql_mode = SparqlMode.UNKNOWN;
 
     private Boolean model_supports_txs_ = false;
 
@@ -160,59 +187,105 @@ public class Context implements EventListener {
         return INSTANCE;
     }
 
-    public void initJenaBackendFromEnv() {
-        String jback = System.getenv("JENA_BACKEND");
-        String backend_name = "";
-        String backend_family = "";
-        String backend_db_name = "";
-        if (jback != null && !jback.equals("")) {
-            StringTokenizer st = new StringTokenizer(jback, ":");
-            if (st.hasMoreTokens()) {
-                backend_name = st.nextToken();
-            }
-            if (st.hasMoreTokens() && backend_name.equals(TDB)) {
-                backend_family = st.nextToken();
-            }
-            if (st.hasMoreTokens()) {
-                backend_db_name = st.nextToken();
-            }
-            if (backend_name.equals(SDB)) {
-                jena_backend = BackendImpl.SDB;
-                jena_backend_db = backend_db_name;
-            }
-            else if (backend_name.equals(TDB) && backend_family.equals(DIRECTORY)) {
-                jena_backend = BackendImpl.TDB_DIRECTORY;
-                jena_backend_db = backend_db_name;
-            }
-            else if (backend_name.equals(TDB) && backend_family.equals(ASSEMBLER)) {
-                jena_backend = BackendImpl.TDB_ASSEMBLER;
-                jena_backend_db = backend_db_name;
-            }
-            else if (backend_name.equals(VIRTUOSO)) {
-                jena_backend = BackendImpl.VIRTUOSO;
-                if (backend_db_name.equals("")) {
-                    jena_backend_db = VIRTUOSO_URL_LOCALHOST;
-                }
-                else {
-                    jena_backend_db = VIRTUOSO_URI + backend_db_name + VIRTUOSO_PORT;
-                }
-            }
-            else if (backend_name.equals(STARDOG)) {
-                jena_backend = BackendImpl.STARDOG;
-                jena_backend_db = backend_db_name;
-            }
-            else {
-                logger.info("UNKNOWN backend! => will use default option...");
-                jena_backend = jena_backend_default;
-                jena_backend_db = jena_backend_db_default;
-            }
-            logger.info("backend: " + jena_backend);
-            logger.info("backend param: " + backend_db_name);
+    private boolean remoteSparql() {
+        if (mode == BackendMode.UNKNOWN) {
+            this.initJenaBackendFromEnv();
         }
-        else {
-            logger.info("default option!");
-            jena_backend = jena_backend_default;
-            jena_backend_db = jena_backend_db_default;
+        if (mode == BackendMode.REMOTE_SPARQL)
+            return true;
+        return false;
+    }
+
+    private void checkSPARQLParams() {
+        if (mode == BackendMode.REMOTE_SPARQL) {
+            if (sparql_mode == SparqlMode.UNKNOWN)
+                throw new RuntimeException("Uninitialized SPARQL mode while using SPARQL service!");
+            if (remote_sparql_url.equals(""))
+                throw new RuntimeException("Uninitialized remote SPARQL service query URL!");
+            if (remote_update_url.equals(""))
+                throw new RuntimeException("Uninitialized remote SPARQL service update URL!");
+        }
+    }
+
+    private void initJenaBackendFromEnv() {
+        if (jena_backend == BackendImpl.UNKNOWN) {
+            synchronized(this) {
+                if (jena_backend == BackendImpl.UNKNOWN) {
+                    String jback = System.getenv("JENA_BACKEND");
+                    String backend_name = "";
+                    String backend_family = "";
+                    String backend_db_name = "";
+                    if (jback != null && !jback.equals("")) {
+                        StringTokenizer st = new StringTokenizer(jback, ":");
+                        if (st.hasMoreTokens()) {
+                            backend_name = st.nextToken();
+                        }
+                        if (st.hasMoreTokens() && backend_name.equals(TDB)) {
+                            backend_family = st.nextToken();
+                        }
+                        if (st.hasMoreTokens()) {
+                            backend_db_name = st.nextToken();
+                            while (st.hasMoreTokens()) {
+                                backend_db_name = backend_db_name + ":" + st.nextToken();
+                            }
+                        }
+                        if (backend_name.equals(SDB)) {
+                            jena_backend = BackendImpl.SDB;
+                            jena_backend_db = backend_db_name;
+                            mode = BackendMode.JENA_MODEL;
+                        }
+                        else if (backend_name.equals(TDB) && backend_family.equals(DIRECTORY)) {
+                            jena_backend = BackendImpl.TDB_DIRECTORY;
+                            jena_backend_db = backend_db_name;
+                            mode = BackendMode.JENA_MODEL;
+                        }
+                        else if (backend_name.equals(TDB) && backend_family.equals(ASSEMBLER)) {
+                            jena_backend = BackendImpl.TDB_ASSEMBLER;
+                            jena_backend_db = backend_db_name;
+                            mode = BackendMode.JENA_MODEL;
+                        }
+                        else if (backend_name.equals(VIRTUOSO)) {
+                            jena_backend = BackendImpl.VIRTUOSO;
+                            if (backend_db_name.equals("")) {
+                                jena_backend_db = VIRTUOSO_URL_LOCALHOST;
+                            }
+                            else {
+                                jena_backend_db = VIRTUOSO_URI + backend_db_name + VIRTUOSO_PORT;
+                            }
+                            mode = BackendMode.JENA_MODEL;
+                        }
+                        else if (backend_name.equals(STARDOG)) {
+                            jena_backend = BackendImpl.STARDOG;
+                            jena_backend_db = backend_db_name;
+                            mode = BackendMode.JENA_MODEL;
+                        }
+                        else if (backend_name.equals(FOUR_STORE)) {
+                            jena_backend = BackendImpl.FOUR_STORE;
+                            mode = BackendMode.REMOTE_SPARQL;
+                            sparql_mode = FOUR_STORE_MODE;
+                            jena_backend_db = backend_db_name;
+                            remote_update_url = jena_backend_db + FOUR_STORE_UPDATE;
+                            remote_sparql_url = jena_backend_db + FOUR_STORE_SPARQL;
+                        }
+                        else {
+                            logger.info("UNKNOWN backend! => will use default option...");
+                            jena_backend = jena_backend_default;
+                            jena_backend_db = jena_backend_db_default;
+                            mode = BackendMode.JENA_MODEL;
+                        }
+                        logger.info("backend: " + jena_backend);
+                        logger.info("backend param: " + backend_db_name);
+                    }
+                    else {
+                        logger.info("default option!");
+                        jena_backend = jena_backend_default;
+                        jena_backend_db = jena_backend_db_default;
+                    }
+                    // checking possible SPARQL service params
+                    if (mode == BackendMode.REMOTE_SPARQL)
+                        this.checkSPARQLParams();
+                }
+            }
         }
     }
 
@@ -221,6 +294,9 @@ public class Context implements EventListener {
             synchronized (model_lock_) {
                 if (model_ == null) {
                     this.initJenaBackendFromEnv();
+                    if (mode == BackendMode.REMOTE_SPARQL) {
+                        throw new RuntimeException("Someone is calling getModel() while operating with remote SPARQL service!");
+                    }
                     logger.info("BACKEND: " + jena_backend);
                     logger.info("DB: " + jena_backend_db);
                     if (jena_backend == BackendImpl.IN_MEMORY) {
@@ -362,37 +438,15 @@ public class Context implements EventListener {
         }
     }
 
-    public String query(String str) {
-    	// getModel is also initializer of model_ variable!
-    	String outstr = "";
-    	Model m = this.getModel();
-        m.enterCriticalSection(Lock.READ);
-        try {
-            Query query = QueryFactory.create(str) ;
-            QueryExecution qexec = QueryExecutionFactory.create(query, m) ;
-            try {
-                ResultSet results = qexec.execSelect() ;
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                ResultSetFormatter.out(out, results, query);
-                outstr = out.toString();
-                //    		//    		    fmt.printAll(System.out) ;
-            } finally {
-                qexec.close() ;
-            }
-        }
-        finally {
-            m.leaveCriticalSection();
-        }
-        return outstr;
-    }
-
     public Vector<Vector<PairNameLink>> query(String str, String[] header, String[] linksAttrs, String[] linksValuesRemapping) {
     	Vector<Vector<PairNameLink>> retval = new Vector<Vector<PairNameLink>>();
-    	Model m = this.getModel();
-        m.enterCriticalSection(Lock.READ);
+        Model m = null;
+        if (!this.remoteSparql()) {
+            this.getModel();
+            m.enterCriticalSection(Lock.READ);
+        }
         try {
-            Query query = QueryFactory.create(str) ;
-            QueryExecution qexec = QueryExecutionFactory.create(query, m);
+            QueryExecution qexec = this.createQueryExec(str, m, remote_sparql_url);
             HashMap<String, String> name_link_map = new HashMap<String, String>();
             HashMap<String, String> link_value_remap = new HashMap<String, String>();
             logger.debug("header len: " + header.length);
@@ -419,12 +473,12 @@ public class Context implements EventListener {
                 logger.debug("result set hasNext?: " + results.hasNext());
                 for ( ; results.hasNext(); ) {
                     QuerySolution sol = results.next();
-                    System.out.println(sol);
+                    logger.debug(sol.toString());
                     if (header.length != 0) {
                         variable_names = header;
                     }
                     else {
-                        System.out.println("header.length == 0 -> generating variable names...");
+                        logger.debug("header.length == 0 -> generating variable names...");
                         Iterator<String> names = sol.varNames();
                         Vector<String> vec = new Vector<String>();
                         while (names.hasNext()) {
@@ -490,7 +544,8 @@ public class Context implements EventListener {
             } finally { qexec.close() ; }
         }
         finally {
-            m.leaveCriticalSection();
+            if (m != null)
+                m.leaveCriticalSection();
         }
     	return retval;    	
     }
@@ -511,114 +566,15 @@ public class Context implements EventListener {
 
     	return retval;
     }
-    
-    public String query(String str, String[] header, boolean literalsAsLinks) {
-    	// getModel is also initializer of model_ variable!
-    	String retval = "";
-    	for (int i = 0; i<header.length; i++) {
-            if (i == 0)
-                retval = retval + "|";
-            retval = retval + header[i];
-            //if (i < header.length - 1)
-            retval = retval + "|";
-    	}
-    	retval = retval + "\n";
-        Model m = this.getModel();
-        m.enterCriticalSection(Lock.READ);
-        try {
-            Query query = QueryFactory.create(str) ;
-            QueryExecution qexec = QueryExecutionFactory.create(query, m) ;
-            try {
-                ResultSet results = qexec.execSelect() ;
-                //    		ByteArrayOutputStream out = new ByteArrayOutputStream();
-                //    		ResultSetFormatter.out(out, results, query);
-                //    		String outstr = out.toString();
-                //    		return outstr;
-                //    		//    		    fmt.printAll(System.out) ;
-                for ( ; results.hasNext(); ) {
-                    QuerySolution sol = results.next();
-                    System.out.println(sol);
-                    for (int i = 0; i < header.length; i++) {
-                        if (i == 0)
-                            retval = retval + "|";
-                        if (sol.contains(header[i])) {
-                            RDFNode x = sol.get(header[i]);
-                            if (x.isLiteral()) {
-                                if (literalsAsLinks)
-                                    retval = retval + "[[";
-                                String lit = x.asLiteral().toString();
-                                retval = retval + lit.replace(".", "\\.");
-                                if (literalsAsLinks)
-                                    retval = retval + "]]";
-                            }
-                        }
-                        //if (i < header.length - 1)
-                        retval = retval + "|";
-                    }
-                    retval = retval + "\n";
-                }
-            } finally { qexec.close() ; }
-        }
-        finally {
-            m.leaveCriticalSection();
-        }
-    	return retval;
-    }
-
-    public String query(String str, String header, String literalsAsLinks) {
-    	if (header == null || header.equals(""))
-            return this.query(str);
-    	StringTokenizer st = new StringTokenizer(header, ",");
-    	Vector<String >vec = new Vector<String>();
-    	while(st.hasMoreElements()) {
-            vec.add(st.nextToken());
-    	}
-    	boolean links = false;
-    	if ("true".equals(literalsAsLinks)) {
-            links = true;
-    	}
-        return this.query(str, vec.toArray(new String[0]), links);
-    }
-
-    public String getPropertyTableForResource(String res, String literalsAsLinks) {
-    	String tres = SymbolMapper.transform(res, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
-    	String retval = "";
-        Model m = this.getModel();
-        m.enterCriticalSection(Lock.READ);
-        try {
-            StmtIterator iter = m.listStatements(new SimpleSelector(m.createResource(tres), null, (RDFNode)null) {
-                public boolean selects(Statement s) {
-                    return true;
-                }
-            });
-            if (iter.hasNext()) {
-                retval = "|property|value|\n";
-            }
-            boolean links = false;
-            if ("true".equals(literalsAsLinks))
-                links = true;
-            while (iter.hasNext()) {
-                Statement stmt = iter.next();
-                retval = retval + "|"
-                    + stmt.getPredicate().toString()
-                    + "|"
-                    + (links ? "[[" : "")
-                    + (links ? /* stmt.getLiteral().toString().replace(".", "\\.") */ SymbolMapper.transform(stmt.getLiteral().toString(), SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION) : stmt.getLiteral().toString()) 
-                    + (links ? "]]" : "")
-                    + "|\n";
-            }
-        }
-        finally {
-            m.leaveCriticalSection();
-        }
-        return retval;
-    }
 
     public Vector<Vector<String>> getPropertyTableForResource(String res) {
         logger.debug("Context: table for resource: " + res);
     	String tres = SymbolMapper.transform(res, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         logger.debug("Context: resource translated to: " + tres);
     	Vector<Vector<String>> retval = new Vector<Vector<String>>();
+        if (this.remoteSparql()) {
+            return this.query("SELECT ?Property ?Value WHERE { <" + tres + "> ?Property ?Value }", new String[] {"Property", "Value"});
+        }
         Model m = this.getModel();
         m.enterCriticalSection(Lock.READ);
         try {
@@ -644,19 +600,30 @@ public class Context implements EventListener {
     }
 
     public void setProperty(String resource, String property_prefix, String property_name, String property_value, Mode mode) {
-    	// createProperty reuses existing property
-        Model m = this.getModel();
-        m.enterCriticalSection(Lock.WRITE);
-        try {
-            Property property = m.createProperty(property_prefix, property_name);
-            this.setProperty(resource, property, property_value, mode);
+        if (this.remoteSparql()) {
+            if (mode == Mode.MODIFY) {
+                this.removeProperty(resource, property_prefix, property_name);
+            }
+            String updatestr = "INSERT DATA { <" + resource + "> <" + property_prefix + /*"#" + */ property_name + "> " + "\"" + property_value + "\" }";
+            //System.err.println("Update string: " + updatestr);
+            UpdateRequest up = UpdateFactory.create(updatestr);
+            this.executeSPARQLUpdateRequest(up);
         }
-        finally {
-            m.leaveCriticalSection();
+        else {
+            // createProperty reuses existing property
+            Model m = this.getModel();
+            m.enterCriticalSection(Lock.WRITE);
+            try {
+                Property property = m.createProperty(property_prefix, property_name);
+                this.setProperty(resource, property, property_value, mode);
+            }
+            finally {
+                m.leaveCriticalSection();
+            }
         }
     }
 
-    public void setProperty(String resource, Property property, String property_value, Mode mode) {
+    private void setProperty(String resource, Property property, String property_value, Mode mode) {
         logger.debug("Context: set property on resource: " + resource);
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         logger.debug("Context: resource translated to: " + tres);
@@ -677,18 +644,26 @@ public class Context implements EventListener {
     }
     
     public void removeProperty(String resource, String property_prefix, String property_name) {
-        Model m = this.getModel();
-        m.enterCriticalSection(Lock.WRITE);
-        try {
-            Property property = m.createProperty(property_prefix, property_name);
-            this.removeProperty(resource, property);
+        if (this.remoteSparql()) {
+            String triple = "<" + resource + "> <" + property_prefix + /*"#" + */ property_name + "> ?o";
+            String updatestr = "DELETE { " + triple + " } WHERE { " + triple + " }";
+            UpdateRequest up = UpdateFactory.create(updatestr);
+            this.executeSPARQLUpdateRequest(up);
         }
-        finally {
-            m.leaveCriticalSection();
+        else {
+            Model m = this.getModel();
+            m.enterCriticalSection(Lock.WRITE);
+            try {
+                Property property = m.createProperty(property_prefix, property_name);
+                this.removeProperty(resource, property);
+            }
+            finally {
+                m.leaveCriticalSection();
+            }
         }
     }
 
-    public void removeProperty(String resource, Property property) {
+    private void removeProperty(String resource, Property property) {
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         Model m = this.getModel();
         m.enterCriticalSection(Lock.WRITE);
@@ -705,6 +680,21 @@ public class Context implements EventListener {
     }
     
     public String getProperty(String resource, String property_prefix, String property_name) {
+        if (this.remoteSparql()) {
+            String select_str = "SELECT ?o WHERE { <" + resource + "> <" + property_prefix /*+ "#"*/ + property_name + "> ?o }";
+            QueryExecution qexec = this.createQueryExec(select_str, null, remote_sparql_url);
+            try {
+                ResultSet results = qexec.execSelect();
+                if (results.hasNext()) {
+                    QuerySolution sol = results.next();
+                    Literal lit = sol.getLiteral("o");
+                    return lit.toString();
+                }
+            } finally {
+                qexec.close() ;
+            }
+            return null;
+        }
         Model m = this.getModel();
         m.enterCriticalSection(Lock.READ);
         try {
@@ -716,7 +706,7 @@ public class Context implements EventListener {
         }
     }
 
-    public String getProperty(String resource, Property property) {
+    private String getProperty(String resource, Property property) {
     	String tres = SymbolMapper.transform(resource, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         Model m = this.getModel();
         m.enterCriticalSection(Lock.READ);
@@ -730,6 +720,30 @@ public class Context implements EventListener {
         finally {
             m.leaveCriticalSection();
         }
+    }
+
+    private void executeSPARQLUpdateRequest(UpdateRequest ur) {
+        if (sparql_mode == SparqlMode.NORMAL) {
+            UpdateExecutionFactory.createRemote(ur, remote_update_url).execute();
+        }
+        else if (sparql_mode == SparqlMode.WEBFORM) {
+            UpdateExecutionFactory.createRemoteForm(ur, remote_update_url).execute();
+        }
+        else {
+            throw new RuntimeException("Uninitialized SPARQL mode while using SPARQL service!");
+        }
+    }
+
+    private QueryExecution createQueryExec(String query, Model m, String sparql_query_url) {
+        Query q = QueryFactory.create(query) ;
+        QueryExecution qexec = null;
+        if (!this.remoteSparql()) {
+            qexec = QueryExecutionFactory.create(q, m);
+        }
+        else {
+            qexec = QueryExecutionFactory.sparqlService(sparql_query_url, q);
+        }
+        return qexec;
     }
 
     @Override
@@ -753,56 +767,24 @@ public class Context implements EventListener {
         String name = DocumentUtil.computeFullDocName(doc.getDocumentReference());
         String tres = SymbolMapper.transform(name, SymbolMapper.MappingDirection.XWIKI_URL_TO_PHYSICAL_URL, SymbolMapper.MappingStrategy.SYMBOLIC_NAME_TRANSLATION);
         logger.debug("tres: " + tres);
-        Model m = this.getModel();
-        m.enterCriticalSection(Lock.WRITE);
-        try {
-            Resource res = m.getResource(tres);
-            res.removeProperties();
-            if (logger.isDebugEnabled()) {
-                logger.debug("props after delete: " + this.query("SELECT ?prop WHERE { <" + tres + "> ?prop ?prop_value }", new String[] {"prop"}, false));
-                StmtIterator it = res.listProperties();
-                while (it.hasNext()) {
-                    Statement st = it.next();
-                    logger.debug("prop: " + st);
-                }
+        if (this.remoteSparql()) {
+            String triple = "<" + tres + "> ?p ?o";
+            String updatestr = "DELETE { " + triple + " } WHERE { " + triple + " }";
+            //System.err.println("xUpdate/delete string: " + updatestr);
+            UpdateRequest up = UpdateFactory.create(updatestr);
+            this.executeSPARQLUpdateRequest(up);
+        }
+        else {
+            Model m = this.getModel();
+            m.enterCriticalSection(Lock.WRITE);
+            try {
+                Resource res = m.getResource(tres);
+                res.removeProperties();
+            }
+            finally {
+                m.leaveCriticalSection();
             }
         }
-        finally {
-            m.leaveCriticalSection();
-        }
-
-        //		//Query query = QueryFactory.create("SELECT ?prop WHERE { ?ref <http://www.objectsecurity.com/NextGenRE/XWikiPage_properties_for_deletion> ?prop }") ;
-        //		Query query = QueryFactory.create("SELECT ?prop WHERE { <" + res + "> ?prop ?prop_value }");
-        //		QueryExecution qexec = QueryExecutionFactory.create(query, this.getModel()) ;
-        //		String[] header = new String[] {"prop" };
-        //		this.begin();
-        //    	try {
-        //    		ResultSet results = qexec.execSelect() ;
-        //    		for ( ; results.hasNext(); ) {
-        //    			QuerySolution sol = results.next();
-        //    			System.out.println(sol);
-        //    			for (int i = 0; i < header.length; i++) {
-        //    				if (sol.contains(header[i])) {
-        //    					RDFNode x = sol.get(header[i]);
-        //    					if (x.isLiteral()) {
-        //    						String lit = x.asLiteral().toString();
-        //    						System.err.println("deleting property: " + lit);
-        //    						if (lit != null && !lit.equals("")) {
-        //    							int pos = lit.lastIndexOf('/');
-        //    							String prefix = lit.substring(0, pos + 1);
-        //    							String name = lit.substring(pos + 1);
-        //    							System.err.println("property prefix `" + prefix + "'");
-        //    							System.err.println("property name `" + name + "'");
-        //    							this.removeProperty(res, prefix, name);
-        //    						}
-        //    					}
-        //    				}
-        //    			}
-        //    		}
-        //    	} finally { qexec.close() ; }
-        //    	this.removeProperty(res, "http://www.objectsecurity.com/NextGenRE/", "XWikiPage_properties_for_deletion");
-        //    	this.commit();
-        //    	System.err.println("props after delete: " + this.query("SELECT ?prop WHERE { ?ref ?prop_name ?prop }", new String[] {"prop"}, false));
     }
 	
     private ObservationManager getObservationManager() {
