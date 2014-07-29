@@ -442,7 +442,7 @@ public class Context implements EventListener {
     	Vector<Vector<PairNameLink>> retval = new Vector<Vector<PairNameLink>>();
         Model m = null;
         if (!this.remoteSparql()) {
-            this.getModel();
+            m = this.getModel();
             m.enterCriticalSection(Lock.READ);
         }
         try {
